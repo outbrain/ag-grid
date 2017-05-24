@@ -41,6 +41,7 @@ export class BaseFrameworkFactory implements IFrameworkFactory {
     }
 
     public setTimeout(action: any, timeout?: any): void {
-        setTimeout(action, timeout);
+        const timeOut = (window as any).orgSetTimeout || setTimeout;
+        timeOut(action, timeout);
     }
 }

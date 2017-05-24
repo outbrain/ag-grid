@@ -28381,7 +28381,8 @@ return /******/ (function(modules) { // webpackBootstrap
 	        return gridOptions.groupRowInnerRenderer;
 	    };
 	    BaseFrameworkFactory.prototype.setTimeout = function (action, timeout) {
-	        setTimeout(action, timeout);
+	        var timeOut = window.orgSetTimeout || setTimeout;
+	        timeOut(action, timeout);
 	    };
 	    return BaseFrameworkFactory;
 	}());
