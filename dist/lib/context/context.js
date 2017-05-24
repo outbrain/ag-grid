@@ -1,34 +1,78 @@
 /**
  * ag-grid - Advanced Data Grid / Data Table supporting Javascript / React / AngularJS / Web Components
- * @version v4.0.2
+ * @version v10.0.0
  * @link http://www.ag-grid.com/
  * @license MIT
  */
-var utils_1 = require('../utils');
-var logger_1 = require("../logger");
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+var utils_1 = require("../utils");
 var Context = (function () {
-    function Context(params) {
+    function Context(params, logger) {
         this.beans = {};
+        this.componentsMappedByName = {};
         this.destroyed = false;
         if (!params || !params.beans) {
             return;
         }
         this.contextParams = params;
-        this.logger = new logger_1.Logger('Context', this.contextParams.debug);
+        this.logger = logger;
         this.logger.log('>> creating ag-Application Context');
+        this.setupComponents();
         this.createBeans();
         var beans = utils_1.Utils.mapObject(this.beans, function (beanEntry) { return beanEntry.beanInstance; });
         this.wireBeans(beans);
         this.logger.log('>> ag-Application Context ready - component is alive');
     }
+    Context.prototype.setupComponents = function () {
+        var _this = this;
+        if (this.contextParams.components) {
+            this.contextParams.components.forEach(function (componentMeta) { return _this.addComponent(componentMeta); });
+        }
+    };
+    Context.prototype.addComponent = function (componentMeta) {
+        // get name of the class as a string
+        // var className = _.getNameOfClass(ComponentClass);
+        // insert a dash after every capital letter
+        // var classEscaped = className.replace(/([A-Z])/g, "-$1").toLowerCase();
+        var classEscaped = componentMeta.componentName.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase();
+        // put all to upper case
+        var classUpperCase = classEscaped.toUpperCase();
+        // finally store
+        this.componentsMappedByName[classUpperCase] = componentMeta.theClass;
+    };
+    Context.prototype.createComponent = function (element) {
+        var key = element.nodeName;
+        if (this.componentsMappedByName && this.componentsMappedByName[key]) {
+            var newComponent = new this.componentsMappedByName[key];
+            this.wireBean(newComponent);
+            this.copyAttributesFromNode(element, newComponent.getGui());
+            newComponent.attributesSet();
+            return newComponent;
+        }
+        else {
+            return null;
+        }
+    };
+    Context.prototype.copyAttributesFromNode = function (fromNode, toNode) {
+        if (fromNode.attributes) {
+            var count = fromNode.attributes.length;
+            for (var i = 0; i < count; i++) {
+                var attr = fromNode.attributes[i];
+                toNode.setAttribute(attr.name, attr.value);
+            }
+        }
+    };
     Context.prototype.wireBean = function (bean) {
+        if (!bean)
+            throw Error("Can't wire to bean since it is null");
         this.wireBeans([bean]);
     };
     Context.prototype.wireBeans = function (beans) {
         this.autoWireBeans(beans);
         this.methodWireBeans(beans);
-        this.postWire(beans);
-        this.wireCompleteBeans(beans);
+        this.preConstruct(beans);
+        this.postConstruct(beans);
     };
     Context.prototype.createBeans = function () {
         var _this = this;
@@ -42,8 +86,9 @@ var Context = (function () {
         utils_1.Utils.iterateObject(this.beans, function (key, beanEntry) {
             var constructorParamsMeta;
             if (beanEntry.bean.prototype.__agBeanMetaData
-                && beanEntry.bean.prototype.__agBeanMetaData.agConstructor) {
-                constructorParamsMeta = beanEntry.bean.prototype.__agBeanMetaData.agConstructor;
+                && beanEntry.bean.prototype.__agBeanMetaData.autowireMethods
+                && beanEntry.bean.prototype.__agBeanMetaData.autowireMethods.agConstructor) {
+                constructorParamsMeta = beanEntry.bean.prototype.__agBeanMetaData.autowireMethods.agConstructor;
             }
             var constructorParams = _this.getBeansForParameters(constructorParamsMeta, beanEntry.beanName);
             var newInstance = applyToConstructor(beanEntry.bean, constructorParams);
@@ -77,7 +122,11 @@ var Context = (function () {
     };
     Context.prototype.methodWireBeans = function (beans) {
         var _this = this;
-        beans.forEach(function (bean) { return _this.methodWireBean(bean); });
+        beans.forEach(function (bean) {
+            if (!bean)
+                throw Error("Can't wire to bean since it is null");
+            return _this.methodWireBean(bean);
+        });
     };
     Context.prototype.autoWireBean = function (bean) {
         var _this = this;
@@ -102,18 +151,20 @@ var Context = (function () {
         return beanName;
     };
     Context.prototype.methodWireBean = function (bean) {
-        var beanName = this.getBeanName(bean);
-        // if no init method, skip he bean
-        if (!bean.agWire) {
-            return;
+        var _this = this;
+        var autowiredMethods;
+        if (bean.__agBeanMetaData) {
+            autowiredMethods = bean.__agBeanMetaData.autowireMethods;
         }
-        var wireParams;
-        if (bean.__agBeanMetaData
-            && bean.__agBeanMetaData.agWire) {
-            wireParams = bean.__agBeanMetaData.agWire;
-        }
-        var initParams = this.getBeansForParameters(wireParams, beanName);
-        bean.agWire.apply(bean, initParams);
+        utils_1.Utils.iterateObject(autowiredMethods, function (methodName, wireParams) {
+            // skip constructor, as this is dealt with elsewhere
+            if (methodName === 'agConstructor') {
+                return;
+            }
+            var beanName = _this.getBeanName(bean);
+            var initParams = _this.getBeansForParameters(wireParams, beanName);
+            bean[methodName].apply(bean, initParams);
+        });
     };
     Context.prototype.getBeansForParameters = function (parameters, beanName) {
         var _this = this;
@@ -145,7 +196,7 @@ var Context = (function () {
             return null;
         }
     };
-    Context.prototype.postWire = function (beans) {
+    Context.prototype.postConstruct = function (beans) {
         beans.forEach(function (bean) {
             // try calling init methods
             if (bean.__agBeanMetaData && bean.__agBeanMetaData.postConstructMethods) {
@@ -153,34 +204,35 @@ var Context = (function () {
             }
         });
     };
-    Context.prototype.wireCompleteBeans = function (beans) {
+    Context.prototype.preConstruct = function (beans) {
         beans.forEach(function (bean) {
-            if (bean.agApplicationBoot) {
-                bean.agApplicationBoot();
+            // try calling init methods
+            if (bean.__agBeanMetaData && bean.__agBeanMetaData.preConstructMethods) {
+                bean.__agBeanMetaData.preConstructMethods.forEach(function (methodName) { return bean[methodName](); });
             }
         });
     };
+    Context.prototype.getBean = function (name) {
+        return this.lookupBeanInstance('getBean', name, true);
+    };
     Context.prototype.destroy = function () {
-        var _this = this;
         // should only be able to destroy once
         if (this.destroyed) {
             return;
         }
         this.logger.log('>> Shutting down ag-Application Context');
+        // try calling destroy methods
         utils_1.Utils.iterateObject(this.beans, function (key, beanEntry) {
-            if (beanEntry.beanInstance.agDestroy) {
-                if (_this.contextParams.debug) {
-                    console.log('ag-Grid: destroying ' + beanEntry.beanName);
-                }
-                beanEntry.beanInstance.agDestroy();
+            var bean = beanEntry.beanInstance;
+            if (bean.__agBeanMetaData && bean.__agBeanMetaData.preDestroyMethods) {
+                bean.__agBeanMetaData.preDestroyMethods.forEach(function (methodName) { return bean[methodName](); });
             }
-            _this.logger.log('bean ' + _this.getBeanName(beanEntry.beanInstance) + ' destroyed');
         });
         this.destroyed = true;
         this.logger.log('>> ag-Application Context shut down - component is dead');
     };
     return Context;
-})();
+}());
 exports.Context = Context;
 // taken from: http://stackoverflow.com/questions/3362471/how-can-i-call-a-javascript-constructor-using-call-or-apply
 // allows calling 'apply' on a constructor
@@ -189,8 +241,15 @@ function applyToConstructor(constructor, argArray) {
     var factoryFunction = constructor.bind.apply(constructor, args);
     return new factoryFunction();
 }
+function PreConstruct(target, methodName, descriptor) {
+    var props = getOrCreateProps(target);
+    if (!props.postConstructMethods) {
+        props.preConstructMethods = [];
+    }
+    props.preConstructMethods.push(methodName);
+}
+exports.PreConstruct = PreConstruct;
 function PostConstruct(target, methodName, descriptor) {
-    // it's an attribute on the class
     var props = getOrCreateProps(target);
     if (!props.postConstructMethods) {
         props.postConstructMethods = [];
@@ -198,6 +257,14 @@ function PostConstruct(target, methodName, descriptor) {
     props.postConstructMethods.push(methodName);
 }
 exports.PostConstruct = PostConstruct;
+function PreDestroy(target, methodName, descriptor) {
+    var props = getOrCreateProps(target);
+    if (!props.preDestroyMethods) {
+        props.preDestroyMethods = [];
+    }
+    props.preDestroyMethods.push(methodName);
+}
+exports.PreDestroy = PreDestroy;
 function Bean(beanName) {
     return function (classConstructor) {
         var props = getOrCreateProps(classConstructor.prototype);
@@ -247,10 +314,13 @@ function Qualifier(name) {
                 props = getOrCreateProps(classPrototype.prototype);
                 methodName = 'agConstructor';
             }
-            if (!props[methodName]) {
-                props[methodName] = {};
+            if (!props.autowireMethods) {
+                props.autowireMethods = {};
             }
-            props[methodName][index] = name;
+            if (!props.autowireMethods[methodName]) {
+                props.autowireMethods[methodName] = {};
+            }
+            props.autowireMethods[methodName][index] = name;
         }
     };
 }

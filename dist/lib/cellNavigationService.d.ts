@@ -1,13 +1,13 @@
-// Type definitions for ag-grid v4.0.2
+// Type definitions for ag-grid v10.0.0
 // Project: http://www.ag-grid.com/
 // Definitions by: Niall Crosby <https://github.com/ceolter/>
-// Definitions: https://github.com/borisyankov/DefinitelyTyped
 import { GridRow } from "./entities/gridRow";
 import { GridCell } from "./entities/gridCell";
 export declare class CellNavigationService {
     private columnController;
     private rowModel;
     private floatingRowModel;
+    private gridOptionsWrapper;
     getNextCellToFocus(key: any, lastCellToFocus: GridCell): GridCell;
     private getCellToLeft(lastCell);
     private getCellToRight(lastCell);
@@ -18,6 +18,7 @@ export declare class CellNavigationService {
     private getCellAbove(lastCell);
     private getLastBodyCell();
     private getLastFloatingTopRow();
+    getNextTabbedCell(gridCell: GridCell, backwards: boolean): GridCell;
     getNextTabbedCellForwards(gridCell: GridCell): GridCell;
     getNextTabbedCellBackwards(gridCell: GridCell): GridCell;
 }

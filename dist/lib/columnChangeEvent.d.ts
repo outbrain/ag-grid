@@ -1,7 +1,6 @@
-// Type definitions for ag-grid v4.0.2
+// Type definitions for ag-grid v10.0.0
 // Project: http://www.ag-grid.com/
 // Definitions by: Niall Crosby <https://github.com/ceolter/>
-// Definitions: https://github.com/borisyankov/DefinitelyTyped
 import { Column } from "./entities/column";
 import { ColumnGroup } from "./entities/columnGroup";
 export declare class ColumnChangeEvent {
@@ -29,8 +28,5 @@ export declare class ColumnChangeEvent {
     getColumn(): Column;
     getColumns(): Column[];
     getColumnGroup(): ColumnGroup;
-    isPinnedPanelVisibilityImpacted(): boolean;
-    isContainerWidthImpacted(): boolean;
-    isIndividualColumnResized(): boolean;
     isFinished(): boolean;
 }

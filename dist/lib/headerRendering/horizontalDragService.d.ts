@@ -1,7 +1,6 @@
-// Type definitions for ag-grid v4.0.2
+// Type definitions for ag-grid v10.0.0
 // Project: http://www.ag-grid.com/
 // Definitions by: Niall Crosby <https://github.com/ceolter/>
-// Definitions: https://github.com/borisyankov/DefinitelyTyped
 /** need to get this class to use the dragService, so no duplication */
 export interface DragServiceParams {
     eDraggableElement: Element;
@@ -12,5 +11,6 @@ export interface DragServiceParams {
     onDragging: (delta: number, finished: boolean) => void;
 }
 export declare class HorizontalDragService {
+    private gridOptionsWrapper;
     addDragHandling(params: DragServiceParams): void;
 }

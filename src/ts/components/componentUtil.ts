@@ -2,6 +2,7 @@ import {GridOptions} from "../entities/gridOptions";
 import {GridApi} from "../gridApi";
 import {Events} from "../events";
 import {Utils as _} from "../utils";
+import {ColumnApi} from "../columnController/columnController";
 
 export class ComponentUtil {
 
@@ -13,40 +14,59 @@ export class ComponentUtil {
 
     public static STRING_PROPERTIES = [
         'sortingOrder', 'rowClass', 'rowSelection', 'overlayLoadingTemplate',
-        'overlayNoRowsTemplate', 'headerCellTemplate', 'quickFilterText', 'rowModelType'];
+        'overlayNoRowsTemplate', 'headerCellTemplate', 'quickFilterText', 'rowModelType',
+        'editType'];
 
     public static OBJECT_PROPERTIES = [
-        'rowStyle','context','groupColumnDef','localeText','icons','datasource'
+        'rowStyle','context','groupColumnDef','localeText','icons','datasource','enterpriseDatasource','viewportDatasource',
+        'groupRowRendererParams', 'aggFuncs', 'fullWidthCellRendererParams','defaultColGroupDef','defaultColDef','defaultExportParams'
+    //,'cellRenderers','cellEditors'
     ];
 
     public static ARRAY_PROPERTIES = [
-        'slaveGrids','rowData','floatingTopRowData','floatingBottomRowData','columnDefs'
+        'slaveGrids','rowData','floatingTopRowData','floatingBottomRowData','columnDefs','excelStyles'
     ];
 
     public static NUMBER_PROPERTIES = [
-        'rowHeight','rowBuffer','colWidth','headerHeight','groupDefaultExpanded',
-        'minColWidth','maxColWidth'
+        'rowHeight','rowBuffer','colWidth','headerHeight','groupHeaderHeight', 'floatingFiltersHeight',
+        'pivotHeaderHeight', 'pivotGroupHeaderHeight', 'groupDefaultExpanded',
+        'minColWidth','maxColWidth','viewportRowModelPageSize','viewportRowModelBufferSize',
+        'layoutInterval','autoSizePadding','maxBlocksInCache','maxConcurrentDatasourceRequests',
+        'cacheOverflowSize','paginationPageSize','infiniteBlockSize','infiniteInitialRowCount',
+        'scrollbarWidth','paginationStartPage','infiniteBlockSize'
     ];
 
     public static BOOLEAN_PROPERTIES = [
-        'toolPanelSuppressGroups','toolPanelSuppressValues',
+        'toolPanelSuppressRowGroups','toolPanelSuppressValues','toolPanelSuppressPivots', 'toolPanelSuppressPivotMode',
         'suppressRowClickSelection','suppressCellSelection','suppressHorizontalScroll','debug',
         'enableColResize','enableCellExpressions','enableSorting','enableServerSideSorting',
         'enableFilter','enableServerSideFilter','angularCompileRows','angularCompileFilters',
-        'angularCompileHeaders','groupSuppressAutoColumn','groupSelectsChildren','groupHideGroupColumns',
+        'angularCompileHeaders','groupSuppressAutoColumn','groupSelectsChildren',
         'groupIncludeFooter','groupUseEntireRow','groupSuppressRow','groupSuppressBlankHeader','forPrint',
         'suppressMenuHide','rowDeselection','unSortIcon','suppressMultiSort','suppressScrollLag',
         'singleClickEdit','suppressLoadingOverlay','suppressNoRowsOverlay','suppressAutoSize',
         'suppressParentsInRowNodes','showToolPanel','suppressColumnMoveAnimation','suppressMovableColumns',
         'suppressFieldDotNotation','enableRangeSelection','suppressEnterprise','rowGroupPanelShow',
+        'pivotPanelShow', 'suppressTouch', 'suppressAsyncEvents', 'allowContextMenuWithControlKey',
         'suppressContextMenu','suppressMenuFilterPanel','suppressMenuMainPanel','suppressMenuColumnPanel',
-        'enableStatusBar','rememberGroupStateWhenNewData'
+        'enableStatusBar','rememberGroupStateWhenNewData', 'enableCellChangeFlash', 'suppressDragLeaveHidesColumns',
+        'suppressMiddleClickScrolls','suppressPreventDefaultOnMouseWheel', 'suppressUseColIdForGroups',
+        'suppressCopyRowsToClipboard','pivotMode', 'suppressAggFuncInHeader', 'suppressAggFuncInHeader', 'suppressAggAtRootLevel',
+        'suppressFocusAfterRefresh', 'functionsPassive', 'functionsReadOnly', 'suppressRowHoverClass',
+        'animateRows', 'groupSelectsFiltered', 'groupRemoveSingleChildren', 'enableRtl', 'suppressClickEdit',
+        'enableGroupEdit', 'embedFullWidthRows', 'suppressTabbing', 'suppressPaginationPanel', 'floatingFilter',
+        'groupHideOpenParents', 'groupMultiAutoColumn', 'pagination', 'stopEditingWhenGridLosesFocus',
+        'paginationAutoPageSize', 'suppressScrollOnNewData', 'purgeClosedRowNodes', 'cacheQuickFilter'
     ];
 
-    public static FUNCTION_PROPERTIES = ['headerCellRenderer', 'localeTextFunc', 'groupRowInnerRenderer',
-        'groupRowRenderer', 'groupAggFunction', 'isScrollLag', 'isExternalFilterPresent', 'getRowHeight',
-        'doesExternalFilterPass', 'getRowClass','getRowStyle', 'getHeaderCellTemplate', 'traverseNode',
-        'getContextMenuItems', 'getMainMenuItems', 'processRowPostCreate', 'processCellForClipboard'];
+    public static FUNCTION_PROPERTIES = ['headerCellRenderer', 'localeTextFunc', 'groupRowInnerRenderer', 'groupRowInnerRendererFramework',
+        'dateComponent', 'dateComponentFramework', 'groupRowRenderer', 'groupRowRendererFramework', 'isScrollLag', 'isExternalFilterPresent',
+        'getRowHeight', 'doesExternalFilterPass', 'getRowClass','getRowStyle', 'getHeaderCellTemplate', 'traverseNode',
+        'getContextMenuItems', 'getMainMenuItems', 'processRowPostCreate', 'processCellForClipboard',
+        'getNodeChildDetails', 'groupRowAggNodes', 'getRowNodeId', 'isFullWidthCell', 'fullWidthCellRenderer',
+        'fullWidthCellRendererFramework', 'doesDataFlower', 'processSecondaryColDef','processSecondaryColGroupDef',
+        'getBusinessKeyForNode', 'sendToClipboard', 'navigateToNextCell', 'tabToNextCell',
+        'processCellFromClipboard', 'getDocument', 'postProcessPopup'];
 
     public static ALL_PROPERTIES = ComponentUtil.ARRAY_PROPERTIES
         .concat(ComponentUtil.OBJECT_PROPERTIES)
@@ -111,9 +131,8 @@ export class ComponentUtil {
     }
 
     // change this method, the caller should know if it's initialised or not, plus 'initialised'
-    // is not relevant for all component types.
-    // maybe pass in the api and columnApi instead???
-    public static processOnChange(changes: any, gridOptions: GridOptions, api: GridApi): void {
+    // is not relevant for all component types. maybe pass in the api and columnApi instead???
+    public static processOnChange(changes: any, gridOptions: GridOptions, api: GridApi, columnApi: ColumnApi): void {
         //if (!component._initialised || !changes) { return; }
         if (!changes) { return; }
 
@@ -148,7 +167,7 @@ export class ComponentUtil {
         });
 
         if (changes.showToolPanel) {
-            api.showToolPanel(changes.showToolPanel.currentValue);
+            api.showToolPanel(ComponentUtil.toBoolean(changes.showToolPanel.currentValue));
         }
 
         if (changes.quickFilterText) {
@@ -176,8 +195,18 @@ export class ComponentUtil {
         }
 
         if (changes.headerHeight) {
-            api.setHeaderHeight(changes.headerHeight.currentValue);
+            api.setHeaderHeight(ComponentUtil.toNumber(changes.headerHeight.currentValue));
         }
+
+        if (changes.paginationPageSize) {
+            api.paginationSetPageSize(ComponentUtil.toNumber(changes.paginationPageSize.currentValue));
+        }
+
+        if (changes.pivotMode) {
+            columnApi.setPivotMode(ComponentUtil.toBoolean(changes.pivotMode.currentValue));
+        }
+
+        api.dispatchEvent(Events.EVENT_COMPONENT_STATE_CHANGED, changes);
     }
 
     public static toBoolean(value: any): boolean {

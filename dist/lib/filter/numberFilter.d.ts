@@ -1,34 +1,42 @@
-// Type definitions for ag-grid v4.0.2
+// Type definitions for ag-grid v10.0.0
 // Project: http://www.ag-grid.com/
 // Definitions by: Niall Crosby <https://github.com/ceolter/>
-// Definitions: https://github.com/borisyankov/DefinitelyTyped
-import { Filter } from "./filter";
-export declare class NumberFilter implements Filter {
-    private filterParams;
-    private filterChangedCallback;
-    private filterModifiedCallback;
-    private localeTextFunc;
-    private valueGetter;
-    private filterNumber;
-    private filterType;
-    private api;
-    private eGui;
+import { SerializedFilter } from "../interfaces/iFilter";
+import { Comparator, IScalarFilterParams, ScalarBaseFilter } from "./baseFilter";
+export interface SerializedNumberFilter extends SerializedFilter {
+    filter: number;
+    filterTo: number;
+    type: string;
+}
+export declare class NumberFilter extends ScalarBaseFilter<number, IScalarFilterParams, SerializedNumberFilter> {
+    static EQUALS: string;
+    static NOT_EQUAL: string;
+    static LESS_THAN_OR_EQUAL: string;
+    static GREATER_THAN: string;
+    static GREATER_THAN_OR_EQUAL: string;
+    static IN_RANGE: string;
+    private eNumberToPanel;
+    filterNumber: any;
+    filterNumberTo: any;
+    private eFilterToTextField;
     private eFilterTextField;
-    private eTypeSelect;
-    private applyActive;
-    private eApplyButton;
-    init(params: any): void;
-    onNewRowsLoaded(): void;
+    static LESS_THAN: string;
+    modelFromFloatingFilter(from: string): SerializedNumberFilter;
+    getApplicableFilterTypes(): string[];
+    bodyTemplate(): string;
+    initialiseFilterBodyUi(): void;
     afterGuiAttached(): void;
-    doesFilterPass(node: any): boolean;
-    getGui(): any;
-    isFilterActive(): boolean;
-    private createTemplate();
-    private createGui();
-    private setupApply();
-    private onTypeChanged();
-    private filterChanged();
-    private onFilterChanged();
-    private createApi();
-    private getApi();
+    comparator(): Comparator<number>;
+    private onTextFieldsChanged();
+    filterValues(): number | number[];
+    private asNumber(value);
+    private stringToFloat(value);
+    setFilter(filter: any): void;
+    setFilterTo(filter: any): void;
+    getFilter(): any;
+    serialize(): SerializedNumberFilter;
+    parse(model: SerializedNumberFilter): void;
+    refreshFilterBodyUi(): void;
+    resetState(): void;
+    setType(filterType: string): void;
 }

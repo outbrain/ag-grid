@@ -1,9 +1,20 @@
 /**
  * ag-grid - Advanced Data Grid / Data Table supporting Javascript / React / AngularJS / Web Components
- * @version v4.0.2
+ * @version v10.0.0
  * @link http://www.ag-grid.com/
  * @license MIT
  */
+"use strict";
+var __extends = (this && this.__extends) || (function () {
+    var extendStatics = Object.setPrototypeOf ||
+        ({ __proto__: [] } instanceof Array && function (d, b) { d.__proto__ = b; }) ||
+        function (d, b) { for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p]; };
+    return function (d, b) {
+        extendStatics(d, b);
+        function __() { this.constructor = d; }
+        d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
+    };
+})();
 var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
     var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
     if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
@@ -13,142 +24,87 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+Object.defineProperty(exports, "__esModule", { value: true });
+var context_1 = require("./context/context");
+var gridSerializer_1 = require("./gridSerializer");
+var downloader_1 = require("./downloader");
 var columnController_1 = require("./columnController/columnController");
 var valueService_1 = require("./valueService");
-var context_1 = require("./context/context");
-var context_2 = require("./context/context");
 var gridOptionsWrapper_1 = require("./gridOptionsWrapper");
 var LINE_SEPARATOR = '\r\n';
-var CsvCreator = (function () {
-    function CsvCreator() {
+var CsvSerializingSession = (function (_super) {
+    __extends(CsvSerializingSession, _super);
+    function CsvSerializingSession(columnController, valueService, gridOptionsWrapper, processCellCallback, processHeaderCallback, suppressQuotes, columnSeparator) {
+        var _this = _super.call(this, columnController, valueService, gridOptionsWrapper, processCellCallback, processHeaderCallback) || this;
+        _this.suppressQuotes = suppressQuotes;
+        _this.columnSeparator = columnSeparator;
+        _this.result = '';
+        _this.lineOpened = false;
+        return _this;
     }
-    CsvCreator.prototype.exportDataAsCsv = function (params) {
-        var csvString = this.getDataAsCsv(params);
-        var fileNamePresent = params && params.fileName && params.fileName.length !== 0;
-        var fileName = fileNamePresent ? params.fileName : 'export.csv';
-        // for Excel, we need \ufeff at the start
-        // http://stackoverflow.com/questions/17879198/adding-utf-8-bom-to-string-blob
-        var blobObject = new Blob(["\ufeff", csvString], {
-            type: "text/csv;charset=utf-8;"
-        });
-        // Internet Explorer
-        if (window.navigator.msSaveOrOpenBlob) {
-            window.navigator.msSaveOrOpenBlob(blobObject, fileName);
-        }
-        else {
-            // Chrome
-            var downloadLink = document.createElement("a");
-            downloadLink.href = window.URL.createObjectURL(blobObject);
-            downloadLink.download = fileName;
-            document.body.appendChild(downloadLink);
-            downloadLink.click();
-            document.body.removeChild(downloadLink);
-        }
+    CsvSerializingSession.prototype.prepare = function (columnsToExport) {
     };
-    CsvCreator.prototype.getDataAsCsv = function (params) {
-        var _this = this;
-        if (this.gridOptionsWrapper.isRowModelVirtual()) {
-            console.log('ag-Grid: getDataAsCsv not available when doing virtual pagination');
-            return '';
-        }
-        var result = '';
-        var skipGroups = params && params.skipGroups;
-        var skipHeader = params && params.skipHeader;
-        var skipFooters = params && params.skipFooters;
-        var includeCustomHeader = params && params.customHeader;
-        var includeCustomFooter = params && params.customFooter;
-        var allColumns = params && params.allColumns;
-        var onlySelected = params && params.onlySelected;
-        var columnSeparator = (params && params.columnSeparator) || ',';
-        var processCellCallback = params.processCellCallback;
-        var columnsToExport;
-        if (allColumns) {
-            columnsToExport = this.columnController.getAllColumns();
-        }
-        else {
-            columnsToExport = this.columnController.getAllDisplayedColumns();
-        }
-        if (!columnsToExport || columnsToExport.length === 0) {
-            return '';
-        }
-        if (includeCustomHeader) {
-            result += params.customHeader;
-        }
-        // first pass, put in the header names of the cols
-        if (!skipHeader) {
-            columnsToExport.forEach(function (column, index) {
-                var nameForCol = _this.columnController.getDisplayNameForCol(column);
-                if (nameForCol === null || nameForCol === undefined) {
-                    nameForCol = '';
-                }
-                if (index != 0) {
-                    result += columnSeparator;
-                }
-                result += '"' + _this.escape(nameForCol) + '"';
-            });
-            result += LINE_SEPARATOR;
-        }
-        this.rowModel.forEachNodeAfterFilterAndSort(function (node) {
-            if (skipGroups && node.group) {
-                return;
-            }
-            if (skipFooters && node.footer) {
-                return;
-            }
-            if (onlySelected && !node.isSelected()) {
-                return;
-            }
-            columnsToExport.forEach(function (column, index) {
-                var valueForCell;
-                if (node.group && index === 0) {
-                    valueForCell = _this.createValueForGroupNode(node);
-                }
-                else {
-                    valueForCell = _this.valueService.getValue(column, node);
-                }
-                valueForCell = _this.processCell(node, column, valueForCell, processCellCallback);
-                if (valueForCell === null || valueForCell === undefined) {
-                    valueForCell = '';
-                }
-                if (index != 0) {
-                    result += columnSeparator;
-                }
-                result += '"' + _this.escape(valueForCell) + '"';
-            });
-            result += LINE_SEPARATOR;
-        });
-        if (includeCustomFooter) {
-            result += params.customFooter;
-        }
-        return result;
+    CsvSerializingSession.prototype.addCustomHeader = function (customHeader) {
+        if (!customHeader)
+            return;
+        this.result += customHeader + LINE_SEPARATOR;
     };
-    CsvCreator.prototype.processCell = function (rowNode, column, value, processCellCallback) {
-        if (processCellCallback) {
-            return processCellCallback({
-                column: column,
-                node: rowNode,
-                value: value,
-                api: this.gridOptionsWrapper.getApi(),
-                columnApi: this.gridOptionsWrapper.getColumnApi(),
-                context: this.gridOptionsWrapper.getContext()
-            });
+    CsvSerializingSession.prototype.addCustomFooter = function (customFooter) {
+        if (!customFooter)
+            return;
+        this.result += customFooter + LINE_SEPARATOR;
+    };
+    CsvSerializingSession.prototype.onNewHeaderGroupingRow = function () {
+        if (this.lineOpened)
+            this.result += LINE_SEPARATOR;
+        return {
+            onColumn: this.onNewHeaderGroupingRowColumn.bind(this)
+        };
+    };
+    CsvSerializingSession.prototype.onNewHeaderGroupingRowColumn = function (header, index, span) {
+        if (index != 0) {
+            this.result += this.columnSeparator;
         }
-        else {
+        this.result += header;
+        for (var i = 1; i <= span; i++) {
+            this.result += this.columnSeparator + this.putInQuotes("", this.suppressQuotes);
+        }
+        this.lineOpened = true;
+    };
+    CsvSerializingSession.prototype.onNewHeaderRow = function () {
+        if (this.lineOpened)
+            this.result += LINE_SEPARATOR;
+        return {
+            onColumn: this.onNewHeaderRowColumn.bind(this)
+        };
+    };
+    CsvSerializingSession.prototype.onNewHeaderRowColumn = function (column, index, node) {
+        if (index != 0) {
+            this.result += this.columnSeparator;
+        }
+        this.result += this.putInQuotes(this.extractHeaderValue(column), this.suppressQuotes);
+        this.lineOpened = true;
+    };
+    CsvSerializingSession.prototype.onNewBodyRow = function () {
+        if (this.lineOpened)
+            this.result += LINE_SEPARATOR;
+        return {
+            onColumn: this.onNewBodyRowColumn.bind(this)
+        };
+    };
+    CsvSerializingSession.prototype.onNewBodyRowColumn = function (column, index, node) {
+        if (index != 0) {
+            this.result += this.columnSeparator;
+        }
+        this.result += this.putInQuotes(this.extractRowCellValue(column, index, node), this.suppressQuotes);
+        this.lineOpened = true;
+    };
+    CsvSerializingSession.prototype.putInQuotes = function (value, suppressQuotes) {
+        if (suppressQuotes) {
             return value;
         }
-    };
-    CsvCreator.prototype.createValueForGroupNode = function (node) {
-        var keys = [node.key];
-        while (node.parent) {
-            node = node.parent;
-            keys.push(node.key);
-        }
-        return keys.reverse().join(' -> ');
-    };
-    // replace each " with "" (ie two sets of double quotes is how to do double quotes in csv)
-    CsvCreator.prototype.escape = function (value) {
         if (value === null || value === undefined) {
-            return '';
+            return '""';
         }
         var stringValue;
         if (typeof value === 'string') {
@@ -158,31 +114,55 @@ var CsvCreator = (function () {
             stringValue = value.toString();
         }
         else {
-            console.warn('known value type during csv conversion');
+            console.warn('unknown value type during csv conversion');
             stringValue = '';
         }
-        return stringValue.replace(/"/g, "\"\"");
+        // replace each " with "" (ie two sets of double quotes is how to do double quotes in csv)
+        var valueEscaped = stringValue.replace(/"/g, "\"\"");
+        return '"' + valueEscaped + '"';
     };
-    __decorate([
-        context_2.Autowired('rowModel'), 
-        __metadata('design:type', Object)
-    ], CsvCreator.prototype, "rowModel", void 0);
-    __decorate([
-        context_2.Autowired('columnController'), 
-        __metadata('design:type', columnController_1.ColumnController)
-    ], CsvCreator.prototype, "columnController", void 0);
-    __decorate([
-        context_2.Autowired('valueService'), 
-        __metadata('design:type', valueService_1.ValueService)
-    ], CsvCreator.prototype, "valueService", void 0);
-    __decorate([
-        context_2.Autowired('gridOptionsWrapper'), 
-        __metadata('design:type', gridOptionsWrapper_1.GridOptionsWrapper)
-    ], CsvCreator.prototype, "gridOptionsWrapper", void 0);
-    CsvCreator = __decorate([
-        context_1.Bean('csvCreator'), 
-        __metadata('design:paramtypes', [])
-    ], CsvCreator);
+    CsvSerializingSession.prototype.parse = function () {
+        return this.result;
+    };
+    return CsvSerializingSession;
+}(gridSerializer_1.BaseGridSerializingSession));
+exports.CsvSerializingSession = CsvSerializingSession;
+var CsvCreator = (function () {
+    function CsvCreator() {
+    }
+    CsvCreator.prototype.exportDataAsCsv = function (params) {
+        var fileNamePresent = params && params.fileName && params.fileName.length !== 0;
+        var fileName = fileNamePresent ? params.fileName : 'export.csv';
+        var dataAsCsv = this.getDataAsCsv(params);
+        this.downloader.download(fileName, dataAsCsv, "text/csv;charset=utf-8;");
+        return dataAsCsv;
+    };
+    CsvCreator.prototype.getDataAsCsv = function (params) {
+        return this.gridSerializer.serialize(new CsvSerializingSession(this.columnController, this.valueService, this.gridOptionsWrapper, params ? params.processCellCallback : null, params ? params.processHeaderCallback : null, params && params.suppressQuotes, (params && params.columnSeparator) || ','), params);
+    };
     return CsvCreator;
-})();
+}());
+__decorate([
+    context_1.Autowired('downloader'),
+    __metadata("design:type", downloader_1.Downloader)
+], CsvCreator.prototype, "downloader", void 0);
+__decorate([
+    context_1.Autowired('gridSerializer'),
+    __metadata("design:type", gridSerializer_1.GridSerializer)
+], CsvCreator.prototype, "gridSerializer", void 0);
+__decorate([
+    context_1.Autowired('columnController'),
+    __metadata("design:type", columnController_1.ColumnController)
+], CsvCreator.prototype, "columnController", void 0);
+__decorate([
+    context_1.Autowired('valueService'),
+    __metadata("design:type", valueService_1.ValueService)
+], CsvCreator.prototype, "valueService", void 0);
+__decorate([
+    context_1.Autowired('gridOptionsWrapper'),
+    __metadata("design:type", gridOptionsWrapper_1.GridOptionsWrapper)
+], CsvCreator.prototype, "gridOptionsWrapper", void 0);
+CsvCreator = __decorate([
+    context_1.Bean('csvCreator')
+], CsvCreator);
 exports.CsvCreator = CsvCreator;

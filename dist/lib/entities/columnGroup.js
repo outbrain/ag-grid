@@ -1,28 +1,104 @@
 /**
  * ag-grid - Advanced Data Grid / Data Table supporting Javascript / React / AngularJS / Web Components
- * @version v4.0.2
+ * @version v10.0.0
  * @link http://www.ag-grid.com/
  * @license MIT
  */
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+Object.defineProperty(exports, "__esModule", { value: true });
 var column_1 = require("./column");
+var eventService_1 = require("../eventService");
+var context_1 = require("../context/context");
+var gridOptionsWrapper_1 = require("../gridOptionsWrapper");
 var ColumnGroup = (function () {
     function ColumnGroup(originalColumnGroup, groupId, instanceId) {
         // depends on the open/closed state of the group, only displaying columns are stored here
         this.displayedChildren = [];
+        this.localEventService = new eventService_1.EventService();
         this.groupId = groupId;
         this.instanceId = instanceId;
         this.originalColumnGroup = originalColumnGroup;
     }
-    // returns header name if it exists, otherwise null. if will not exist if
-    // this group is a padding group, as they don't have colGroupDef's
-    ColumnGroup.prototype.getHeaderName = function () {
-        if (this.originalColumnGroup.getColGroupDef()) {
-            return this.originalColumnGroup.getColGroupDef().headerName;
+    // this is static, a it is used outside of this class
+    ColumnGroup.createUniqueId = function (groupId, instanceId) {
+        return groupId + '_' + instanceId;
+    };
+    // as the user is adding and removing columns, the groups are recalculated.
+    // this reset clears out all children, ready for children to be added again
+    ColumnGroup.prototype.reset = function () {
+        this.parent = null;
+        this.children = null;
+        this.displayedChildren = null;
+    };
+    ColumnGroup.prototype.getParent = function () {
+        return this.parent;
+    };
+    ColumnGroup.prototype.setParent = function (parent) {
+        this.parent = parent;
+    };
+    ColumnGroup.prototype.getUniqueId = function () {
+        return ColumnGroup.createUniqueId(this.groupId, this.instanceId);
+    };
+    ColumnGroup.prototype.checkLeft = function () {
+        // first get all children to setLeft, as it impacts our decision below
+        this.displayedChildren.forEach(function (child) {
+            if (child instanceof ColumnGroup) {
+                child.checkLeft();
+            }
+        });
+        // set our left based on first displayed column
+        if (this.displayedChildren.length > 0) {
+            if (this.gridOptionsWrapper.isEnableRtl()) {
+                var lastChild = this.displayedChildren[this.displayedChildren.length - 1];
+                var lastChildLeft = lastChild.getLeft();
+                this.setLeft(lastChildLeft);
+            }
+            else {
+                var firstChildLeft = this.displayedChildren[0].getLeft();
+                this.setLeft(firstChildLeft);
+            }
         }
         else {
-            return null;
+            // this should never happen, as if we have no displayed columns, then
+            // this groups should not even exist.
+            this.setLeft(null);
         }
     };
+    ColumnGroup.prototype.getLeft = function () {
+        return this.left;
+    };
+    ColumnGroup.prototype.getOldLeft = function () {
+        return this.oldLeft;
+    };
+    ColumnGroup.prototype.setLeft = function (left) {
+        this.oldLeft = left;
+        if (this.left !== left) {
+            this.left = left;
+            this.localEventService.dispatchEvent(ColumnGroup.EVENT_LEFT_CHANGED);
+        }
+    };
+    ColumnGroup.prototype.addEventListener = function (eventType, listener) {
+        this.localEventService.addEventListener(eventType, listener);
+    };
+    ColumnGroup.prototype.removeEventListener = function (eventType, listener) {
+        this.localEventService.removeEventListener(eventType, listener);
+    };
+    // public setMoving(moving: boolean) {
+    //     this.getDisplayedLeafColumns().forEach( (column)=> column.setMoving(moving) );
+    // }
+    //
+    // public isMoving(): boolean {
+    //     return this.moving;
+    // }
     ColumnGroup.prototype.getGroupId = function () {
         return this.groupId;
     };
@@ -85,6 +161,9 @@ var ColumnGroup = (function () {
     ColumnGroup.prototype.getColGroupDef = function () {
         return this.originalColumnGroup.getColGroupDef();
     };
+    ColumnGroup.prototype.isPadding = function () {
+        return this.originalColumnGroup.isPadding();
+    };
     ColumnGroup.prototype.isExpandable = function () {
         return this.originalColumnGroup.isExpandable();
     };
@@ -120,40 +199,51 @@ var ColumnGroup = (function () {
     ColumnGroup.prototype.getColumnGroupShow = function () {
         return this.originalColumnGroup.getColumnGroupShow();
     };
+    ColumnGroup.prototype.getOriginalColumnGroup = function () {
+        return this.originalColumnGroup;
+    };
     ColumnGroup.prototype.calculateDisplayedColumns = function () {
+        var _this = this;
         // clear out last time we calculated
         this.displayedChildren = [];
         // it not expandable, everything is visible
         if (!this.originalColumnGroup.isExpandable()) {
             this.displayedChildren = this.children;
-            return;
         }
-        // and calculate again
-        for (var i = 0, j = this.children.length; i < j; i++) {
-            var abstractColumn = this.children[i];
-            var headerGroupShow = abstractColumn.getColumnGroupShow();
-            switch (headerGroupShow) {
-                case ColumnGroup.HEADER_GROUP_SHOW_OPEN:
-                    // when set to open, only show col if group is open
-                    if (this.originalColumnGroup.isExpanded()) {
-                        this.displayedChildren.push(abstractColumn);
-                    }
-                    break;
-                case ColumnGroup.HEADER_GROUP_SHOW_CLOSED:
-                    // when set to open, only show col if group is open
-                    if (!this.originalColumnGroup.isExpanded()) {
-                        this.displayedChildren.push(abstractColumn);
-                    }
-                    break;
-                default:
-                    // default is always show the column
-                    this.displayedChildren.push(abstractColumn);
-                    break;
-            }
+        else {
+            // and calculate again
+            this.children.forEach(function (abstractColumn) {
+                var headerGroupShow = abstractColumn.getColumnGroupShow();
+                switch (headerGroupShow) {
+                    case ColumnGroup.HEADER_GROUP_SHOW_OPEN:
+                        // when set to open, only show col if group is open
+                        if (_this.originalColumnGroup.isExpanded()) {
+                            _this.displayedChildren.push(abstractColumn);
+                        }
+                        break;
+                    case ColumnGroup.HEADER_GROUP_SHOW_CLOSED:
+                        // when set to open, only show col if group is open
+                        if (!_this.originalColumnGroup.isExpanded()) {
+                            _this.displayedChildren.push(abstractColumn);
+                        }
+                        break;
+                    default:
+                        // default is always show the column
+                        _this.displayedChildren.push(abstractColumn);
+                        break;
+                }
+            });
         }
+        this.localEventService.dispatchEvent(ColumnGroup.EVENT_DISPLAYED_CHILDREN_CHANGED);
     };
-    ColumnGroup.HEADER_GROUP_SHOW_OPEN = 'open';
-    ColumnGroup.HEADER_GROUP_SHOW_CLOSED = 'closed';
     return ColumnGroup;
-})();
+}());
+ColumnGroup.HEADER_GROUP_SHOW_OPEN = 'open';
+ColumnGroup.HEADER_GROUP_SHOW_CLOSED = 'closed';
+ColumnGroup.EVENT_LEFT_CHANGED = 'leftChanged';
+ColumnGroup.EVENT_DISPLAYED_CHILDREN_CHANGED = 'leftChanged';
+__decorate([
+    context_1.Autowired('gridOptionsWrapper'),
+    __metadata("design:type", gridOptionsWrapper_1.GridOptionsWrapper)
+], ColumnGroup.prototype, "gridOptionsWrapper", void 0);
 exports.ColumnGroup = ColumnGroup;

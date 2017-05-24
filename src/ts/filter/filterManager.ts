@@ -1,21 +1,20 @@
-import {Utils as _} from '../utils';
+import {Utils as _} from "../utils";
 import {GridOptionsWrapper} from "../gridOptionsWrapper";
 import {PopupService} from "../widgets/popupService";
 import {ValueService} from "../valueService";
 import {ColumnController} from "../columnController/columnController";
-import {Grid} from "../grid";
 import {RowNode} from "../entities/rowNode";
 import {Column} from "../entities/column";
 import {TextFilter} from "./textFilter";
 import {NumberFilter} from "./numberFilter";
-import {Bean} from "../context/context";
-import {Qualifier} from "../context/context";
-import {GridCore} from "../gridCore";
-import {Autowired} from "../context/context";
+import {Bean, PreDestroy, Autowired, PostConstruct, Context} from "../context/context";
 import {IRowModel} from "../interfaces/iRowModel";
 import {EventService} from "../eventService";
 import {Events} from "../events";
-import {PostConstruct} from "../context/context";
+import {IFilter, IFilterParams, IDoesFilterPassParams, IFilterComp} from "../interfaces/iFilter";
+import {GetQuickFilterTextParams} from "../entities/colDef";
+import {DateFilter} from "./dateFilter";
+import {ComponentProvider} from "../componentProvider";
 
 @Bean('filterManager')
 export class FilterManager {
@@ -30,6 +29,10 @@ export class FilterManager {
     @Autowired('rowModel') private rowModel: IRowModel;
     @Autowired('eventService') private eventService: EventService;
     @Autowired('enterprise') private enterprise: boolean;
+    @Autowired('context') private context: Context;
+    @Autowired('componentProvider') private componentProvider: ComponentProvider;
+
+    public static QUICK_FILTER_SEPARATOR = '\n';
 
     private allFilters: any = {};
     private quickFilter: string = null;
@@ -39,13 +42,19 @@ export class FilterManager {
 
     private availableFilters: {[key: string]: any} = {
         'text': TextFilter,
-        'number': NumberFilter
+        'number': NumberFilter,
+        'date': DateFilter
     };
 
     @PostConstruct
     public init(): void {
         this.eventService.addEventListener(Events.EVENT_ROW_DATA_CHANGED, this.onNewRowsLoaded.bind(this));
         this.eventService.addEventListener(Events.EVENT_NEW_COLUMNS_LOADED, this.onNewColumnsLoaded.bind(this));
+
+        this.quickFilter = this.parseQuickFilter(this.gridOptionsWrapper.getQuickFilterText());
+
+        // check this here, in case there is a filter from the start
+        this.checkExternalFilter();
     }
 
     public registerFilter(key: string, Filter: any): void {
@@ -56,14 +65,14 @@ export class FilterManager {
         if (model) {
             // mark the filters as we set them, so any active filters left over we stop
             var modelKeys = Object.keys(model);
-            _.iterateObject(this.allFilters, (colId, filterWrapper) => {
+            _.iterateObject(this.allFilters, (colId: string, filterWrapper: FilterWrapper) => {
                 _.removeFromArray(modelKeys, colId);
                 var newModel = model[colId];
                 this.setModelOnFilterWrapper(filterWrapper.filter, newModel);
             });
             // at this point, processedFields contains data for which we don't have a filter working yet
             _.iterateArray(modelKeys, (colId) => {
-                var column = this.columnController.getColumn(colId);
+                var column = this.columnController.getPrimaryColumn(colId);
                 if (!column) {
                     console.warn('Warning ag-grid setFilterModel - no column found for colId ' + colId);
                     return;
@@ -79,34 +88,24 @@ export class FilterManager {
         this.onFilterChanged();
     }
 
-    private setModelOnFilterWrapper(filter: { getApi: () => { setModel: Function }}, newModel: any) {
-        // because user can provide filters, we provide useful error checking and messages
-        if (typeof filter.getApi !== 'function') {
-            console.warn('Warning ag-grid - filter missing getApi method, which is needed for getFilterModel');
+    private setModelOnFilterWrapper(filter: IFilterComp, newModel: any) {
+        if (typeof filter.setModel !== 'function') {
+            console.warn('Warning ag-grid - filter missing setModel method, which is needed for setFilterModel');
             return;
         }
-        var filterApi = filter.getApi();
-        if (typeof filterApi.setModel !== 'function') {
-            console.warn('Warning ag-grid - filter API missing setModel method, which is needed for setFilterModel');
-            return;
-        }
-        filterApi.setModel(newModel);
+        filter.setModel(newModel);
     }
 
     public getFilterModel() {
         var result = <any>{};
         _.iterateObject(this.allFilters, function (key: any, filterWrapper: any) {
             // because user can provide filters, we provide useful error checking and messages
-            if (typeof filterWrapper.filter.getApi !== 'function') {
-                console.warn('Warning ag-grid - filter missing getApi method, which is needed for getFilterModel');
-                return;
-            }
-            var filterApi = filterWrapper.filter.getApi();
-            if (typeof filterApi.getModel !== 'function') {
+            var filter: IFilterComp = filterWrapper.filter;
+            if (typeof filter.getModel !== 'function') {
                 console.warn('Warning ag-grid - filter API missing getModel method, which is needed for getFilterModel');
                 return;
             }
-            var model = filterApi.getModel();
+            var model = filter.getModel();
             if (_.exists(model)) {
                 result[key] = model;
             }
@@ -116,21 +115,26 @@ export class FilterManager {
 
     // returns true if any advanced filter (ie not quick filter) active
     public isAdvancedFilterPresent() {
+        return this.advancedFilterPresent;
+    }
+
+    private setAdvancedFilterPresent() {
         var atLeastOneActive = false;
 
         _.iterateObject(this.allFilters, function (key, filterWrapper) {
-            if (!filterWrapper.filter.isFilterActive) { // because users can do custom filters, give nice error message
-                console.error('Filter is missing method isFilterActive');
-            }
             if (filterWrapper.filter.isFilterActive()) {
                 atLeastOneActive = true;
-                filterWrapper.column.setFilterActive(true);
-            } else {
-                filterWrapper.column.setFilterActive(false);
             }
         });
 
-        return atLeastOneActive;
+        this.advancedFilterPresent = atLeastOneActive;
+    }
+
+    private updateFilterFlagInColumns(): void {
+        _.iterateObject(this.allFilters, function (key, filterWrapper) {
+            var filterActive = filterWrapper.filter.isFilterActive();
+            filterWrapper.column.setFilterActive(filterActive);
+        });
     }
 
     // returns true if quickFilter or advancedFilter
@@ -162,7 +166,7 @@ export class FilterManager {
             if (!filterWrapper.filter.doesFilterPass) { // because users can do custom filters, give nice error message
                 console.error('Filter is missing method doesFilterPass');
             }
-            var params = {
+            var params: IDoesFilterPassParams = {
                 node: node,
                 data: data
             };
@@ -174,35 +178,36 @@ export class FilterManager {
         return true;
     }
 
-    // returns true if it has changed (not just same value again)
-    public setQuickFilter(newFilter: any): boolean {
-        if (newFilter === undefined || newFilter === "") {
-            newFilter = null;
+    private parseQuickFilter(newFilter: string): string {
+        if (_.missing(newFilter) || newFilter === "") {
+            return null;
         }
-        if (this.quickFilter !== newFilter) {
-            if (this.gridOptionsWrapper.isRowModelVirtual()) {
-                console.warn('ag-grid: cannot do quick filtering when doing virtual paging');
-                return;
-            }
 
-            //want 'null' to mean to filter, so remove undefined and empty string
-            if (newFilter === undefined || newFilter === "") {
-                newFilter = null;
-            }
-            if (newFilter !== null) {
-                newFilter = newFilter.toUpperCase();
-            }
-            this.quickFilter = newFilter;
+        if (this.gridOptionsWrapper.isRowModelInfinite()) {
+            console.warn('ag-grid: cannot do quick filtering when doing virtual paging');
+            return null;
+        }
 
+        return newFilter.toUpperCase();
+    }
+
+    // returns true if it has changed (not just same value again)
+    public setQuickFilter(newFilter: any): void {
+        var parsedFilter = this.parseQuickFilter(newFilter);
+        if (this.quickFilter !== parsedFilter) {
+            this.quickFilter = parsedFilter;
             this.onFilterChanged();
         }
     }
 
-    public onFilterChanged(): void {
-        this.eventService.dispatchEvent(Events.EVENT_BEFORE_FILTER_CHANGED);
-
-        this.advancedFilterPresent = this.isAdvancedFilterPresent();
+    private checkExternalFilter(): void {
         this.externalFilterPresent = this.gridOptionsWrapper.isExternalFilterPresent();
+    }
+
+    public onFilterChanged(): void {
+        this.setAdvancedFilterPresent();
+        this.updateFilterFlagInColumns();
+        this.checkExternalFilter();
 
         _.iterateObject(this.allFilters, function (key, filterWrapper) {
             if (filterWrapper.filter.onAnyFilterChanged) {
@@ -211,8 +216,6 @@ export class FilterManager {
         });
 
         this.eventService.dispatchEvent(Events.EVENT_FILTER_CHANGED);
-
-        this.eventService.dispatchEvent(Events.EVENT_AFTER_FILTER_CHANGED);
     }
 
     public isQuickFilterPresent(): boolean {
@@ -223,76 +226,131 @@ export class FilterManager {
         return this.doesRowPassFilter(node, filterToSkip);
     }
 
-    public doesRowPassFilter(node: any, filterToSkip?: any): boolean {
-        //first up, check quick filter
-        if (this.isQuickFilterPresent()) {
-            if (!node.quickFilterAggregateText) {
-                this.aggregateRowForQuickFilter(node);
+    private doesRowPassQuickFilterNoCache(node: RowNode): boolean {
+        let columns = this.columnController.getAllPrimaryColumns();
+        let filterPasses = false;
+        columns.forEach( column => {
+            if (filterPasses) { return; }
+            let part = this.getQuickFilterTextForColumn(column, node);
+            if (_.exists(part)) {
+                if (part.indexOf(this.quickFilter)>=0) {
+                    filterPasses = true;
+                }
             }
-            if (node.quickFilterAggregateText.indexOf(this.quickFilter) < 0) {
-                //quick filter fails, so skip item
+        });
+        return filterPasses;
+    }
+
+    private doesRowPassQuickFilterCache(node: any): boolean {
+        if (!node.quickFilterAggregateText) {
+            this.aggregateRowForQuickFilter(node);
+        }
+        let filterPasses = node.quickFilterAggregateText.indexOf(this.quickFilter) >= 0;
+        return filterPasses;
+    }
+
+    private doesRowPassQuickFilter(node: any): boolean {
+        let filterPasses: boolean;
+        if (this.gridOptionsWrapper.isCacheQuickFilter()) {
+            filterPasses = this.doesRowPassQuickFilterCache(node);
+        } else {
+            filterPasses = this.doesRowPassQuickFilterNoCache(node);
+        }
+        return filterPasses;
+    }
+
+    public doesRowPassFilter(node: any, filterToSkip?: any): boolean {
+
+        // the row must pass ALL of the filters, so if any of them fail,
+        // we return true. that means if a row passes the quick filter,
+        // but fails the column filter, it fails overall
+
+        // first up, check quick filter
+        if (this.isQuickFilterPresent()) {
+            if (!this.doesRowPassQuickFilter(node)) {
                 return false;
             }
         }
 
-        //secondly, give the client a chance to reject this row
+        // secondly, give the client a chance to reject this row
         if (this.externalFilterPresent) {
             if (!this.gridOptionsWrapper.doesExternalFilterPass(node)) {
                 return false;
             }
         }
 
-        //lastly, check our internal advanced filter
+        // lastly, check our internal advanced filter
         if (this.advancedFilterPresent) {
             if (!this.doesFilterPass(node, filterToSkip)) {
                 return false;
             }
         }
 
-        //got this far, all filters pass
+        // got this far, all filters pass
         return true;
     }
 
+    private getQuickFilterTextForColumn(column: Column, rowNode: RowNode): string {
+        var value = this.valueService.getValue(column, rowNode);
+
+        var valueAfterCallback: any;
+        var colDef = column.getColDef();
+        if (column.getColDef().getQuickFilterText) {
+            var params: GetQuickFilterTextParams = {
+                value: value,
+                node: rowNode,
+                data: rowNode.data,
+                column: column,
+                colDef: colDef
+            };
+            valueAfterCallback = column.getColDef().getQuickFilterText(params);
+        } else {
+            valueAfterCallback = value;
+        }
+
+        if (valueAfterCallback && valueAfterCallback !== '') {
+            return valueAfterCallback.toString().toUpperCase();
+        } else {
+            return null;
+        }
+    }
+
     private aggregateRowForQuickFilter(node: RowNode) {
-        var aggregatedText = '';
-        var that = this;
-        this.columnController.getAllColumns().forEach(function (column: Column) {
-            var value = that.valueService.getValue(column, node);
-            if (value && value !== '') {
-                aggregatedText = aggregatedText + value.toString().toUpperCase() + "_";
+        var stringParts: string[] = [];
+        var columns = this.columnController.getAllPrimaryColumns();
+        columns.forEach( column => {
+            let part = this.getQuickFilterTextForColumn(column, node);
+            if (_.exists(part)) {
+                stringParts.push(part);
             }
         });
-        node.quickFilterAggregateText = aggregatedText;
+        node.quickFilterAggregateText = stringParts.join(FilterManager.QUICK_FILTER_SEPARATOR);
     }
 
     private onNewRowsLoaded() {
-        var that = this;
-        Object.keys(this.allFilters).forEach(function (field) {
-            var filter = that.allFilters[field].filter;
-            if (filter.onNewRowsLoaded) {
-                filter.onNewRowsLoaded();
+        _.iterateObject(this.allFilters, function (key, filterWrapper) {
+            if (filterWrapper.filter.onNewRowsLoaded) {
+                filterWrapper.filter.onNewRowsLoaded();
             }
         });
+        this.updateFilterFlagInColumns();
+        this.setAdvancedFilterPresent();
     }
 
     private createValueGetter(column: Column) {
         var that = this;
-        return function valueGetter(node: any) {
+        return function valueGetter(node: RowNode) {
             return that.valueService.getValue(column, node);
         };
     }
 
-    public getFilterApi(column: Column) {
+    public getFilterComponent(column: Column) {
         var filterWrapper = this.getOrCreateFilterWrapper(column);
-        if (filterWrapper) {
-            if (typeof filterWrapper.filter.getApi === 'function') {
-                return filterWrapper.filter.getApi();
-            }
-        }
+        return filterWrapper.filter;
     }
 
     public getOrCreateFilterWrapper(column: Column): FilterWrapper {
-        var filterWrapper = this.allFilters[column.getColId()];
+        var filterWrapper = this.cachedFilter(column);
 
         if (!filterWrapper) {
             filterWrapper = this.createFilterWrapper(column);
@@ -302,78 +360,115 @@ export class FilterManager {
         return filterWrapper;
     }
 
-    private createFilterWrapper(column: Column): FilterWrapper {
-        var colDef = column.getColDef();
+    public cachedFilter (column: Column):FilterWrapper{
+        return this.allFilters[column.getColId()];
+    }
 
-        var filterWrapper: FilterWrapper = {
-            column: column,
-            filter: <any> null,
-            scope: <any> null,
-            gui: <any> null
-        };
-
-        if (typeof colDef.filter === 'function') {
+    private createFilterInstance(column: Column): IFilterComp {
+        let filter = column.getFilter();
+        let filterIsComponent = typeof filter === 'function';
+        let filterIsName = _.missing(filter) || typeof filter === 'string';
+        let FilterClass: {new():IFilterComp};
+        if (filterIsComponent) {
             // if user provided a filter, just use it
-            // first up, create child scope if needed
-            if (this.gridOptionsWrapper.isAngularCompileFilters()) {
-                filterWrapper.scope = this.$scope.$new();
-            }
+            FilterClass = <{new(): IFilterComp}> filter;
             // now create filter (had to cast to any to get 'new' working)
-            this.assertMethodHasNoParameters(colDef.filter);
-            filterWrapper.filter = new (<any>colDef.filter)();
-        } else if (_.missing(colDef.filter) || typeof colDef.filter === 'string') {
-            var Filter = this.getFilterFromCache(<string>colDef.filter);
-            filterWrapper.filter = new Filter();
+            this.assertMethodHasNoParameters(FilterClass);
+        } else if (filterIsName) {
+            let filterName = <string> filter;
+            FilterClass = this.getFilterFromCache(filterName);
         } else {
             console.error('ag-Grid: colDef.filter should be function or a string');
+            return null;
         }
 
+        var filterInstance = new FilterClass();
+        this.checkFilterHasAllMandatoryMethods(filterInstance, column);
+        this.context.wireBean(filterInstance);
+
+        return filterInstance;
+    }
+
+    private checkFilterHasAllMandatoryMethods(filterInstance: IFilter, column: Column): void {
+        // help the user, check the mandatory methods exist
+        ['getGui','isFilterActive','doesFilterPass','getModel','setModel'].forEach( methodName => {
+            var methodIsMissing = !(<any>filterInstance)[methodName];
+            if (methodIsMissing) {
+                throw `Filter for column ${column.getColId()} is missing method ${methodName}`;
+            }
+        });
+    }
+
+    private createParams(filterWrapper: FilterWrapper): IFilterParams {
         var filterChangedCallback = this.onFilterChanged.bind(this);
         var filterModifiedCallback = () => this.eventService.dispatchEvent(Events.EVENT_FILTER_MODIFIED);
         var doesRowPassOtherFilters = this.doesRowPassOtherFilters.bind(this, filterWrapper.filter);
-        var filterParams = colDef.filterParams;
 
-        var params = {
+        var colDef = filterWrapper.column.getColDef();
+
+        var params: IFilterParams = {
+            column: filterWrapper.column,
             colDef: colDef,
             rowModel: this.rowModel,
             filterChangedCallback: filterChangedCallback,
             filterModifiedCallback: filterModifiedCallback,
-            filterParams: filterParams,
-            localeTextFunc: this.gridOptionsWrapper.getLocaleTextFunc(),
-            valueGetter: this.createValueGetter(column),
+            valueGetter: this.createValueGetter(filterWrapper.column),
             doesRowPassOtherFilter: doesRowPassOtherFilters,
             context: this.gridOptionsWrapper.getContext(),
             $scope: filterWrapper.scope
         };
-        if (!filterWrapper.filter.init) { // because users can do custom filters, give nice error message
-            throw 'Filter is missing method init';
-        }
-        filterWrapper.filter.init(params);
 
-        if (!filterWrapper.filter.getGui) { // because users can do custom filters, give nice error message
-            throw 'Filter is missing method getGui';
+        if (colDef.filterParams) {
+            _.assign(params, colDef.filterParams);
         }
+
+        return params;
+    }
+
+    private createFilterWrapper(column: Column): FilterWrapper {
+        var filterWrapper: FilterWrapper = {
+            column: column,
+            filter: <IFilterComp> null,
+            scope: <any> null,
+            gui: <HTMLElement> null
+        };
+
+        filterWrapper.filter = this.createFilterInstance(column);
+
+        this.initialiseFilterAndPutIntoGui(filterWrapper);
+
+        return filterWrapper;
+    }
+
+    private initialiseFilterAndPutIntoGui(filterWrapper: FilterWrapper): void {
+        // first up, create child scope if needed
+        if (this.gridOptionsWrapper.isAngularCompileFilters()) {
+            filterWrapper.scope = this.$scope.$new();
+            filterWrapper.scope.context = this.gridOptionsWrapper.getContext();
+        }
+
+        var params = this.createParams(filterWrapper);
+        filterWrapper.filter.init(params);
 
         var eFilterGui = document.createElement('div');
         eFilterGui.className = 'ag-filter';
         var guiFromFilter = filterWrapper.filter.getGui();
-        if (_.isNodeOrElement(guiFromFilter)) {
-            //a dom node or element was returned, so add child
-            eFilterGui.appendChild(guiFromFilter);
-        } else {
-            //otherwise assume it was html, so just insert
-            var eTextSpan = document.createElement('span');
-            eTextSpan.innerHTML = guiFromFilter;
-            eFilterGui.appendChild(eTextSpan);
+
+        // for backwards compatibility with Angular 1 - we
+        // used to allow providing back HTML from getGui().
+        // once we move away from supporting Angular 1
+        // directly, we can change this.
+        if (typeof guiFromFilter === 'string') {
+            guiFromFilter = _.loadTemplate(<string>guiFromFilter);
         }
+
+        eFilterGui.appendChild(guiFromFilter);
 
         if (filterWrapper.scope) {
             filterWrapper.gui = this.$compile(eFilterGui)(filterWrapper.scope)[0];
         } else {
             filterWrapper.gui = eFilterGui;
         }
-
-        return filterWrapper;
     }
 
     private getFilterFromCache(filterType: string): any {
@@ -398,17 +493,32 @@ export class FilterManager {
     }
 
     private onNewColumnsLoaded(): void {
-        this.agDestroy();
+        this.destroy();
     }
 
-    public agDestroy() {
+    // destroys the filter, so it not longer takes part
+    public destroyFilter(column: Column): void {
+        var filterWrapper = this.allFilters[column.getColId()];
+        if (filterWrapper) {
+            this.disposeFilterWrapper(filterWrapper);
+            this.onFilterChanged();
+        }
+    }
+
+    private disposeFilterWrapper(filterWrapper: FilterWrapper): void {
+        filterWrapper.filter.setModel(null);
+        if (filterWrapper.filter.destroy) {
+            filterWrapper.filter.destroy();
+        }
+        filterWrapper.column.setFilterActive(false);
+        delete this.allFilters[filterWrapper.column.getColId()];
+    }
+
+    @PreDestroy
+    public destroy() {
         _.iterateObject(this.allFilters, (key: string, filterWrapper: any) => {
-            if (filterWrapper.filter.destroy) {
-                filterWrapper.filter.destroy();
-                filterWrapper.column.setFilterActive(false);
-            }
+            this.disposeFilterWrapper(filterWrapper);
         });
-        this.allFilters = {};
     }
 
     private assertMethodHasNoParameters(theMethod: any) {
@@ -423,7 +533,7 @@ export class FilterManager {
 
 export interface FilterWrapper {
     column: Column,
-    filter: any,
+    filter: IFilterComp,
     scope: any,
     gui: HTMLElement
 }

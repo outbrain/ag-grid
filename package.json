@@ -1,10 +1,11 @@
 {
   "name": "ag-grid",
-  "version": "4.0.2",
+  "version": "10.0.0",
   "description": "Advanced Data Grid / Data Table supporting Javascript / React / AngularJS / Web Components",
   "main": "./main.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "watchWebpack": "webpack --watch"
   },
   "typings": "./main.d.ts",
   "repository": {
@@ -23,7 +24,7 @@
     "angularjs",
     "reactjs"
   ],
-  "author": "Niall Crosby <niall.crosby@gmail.com>",
+  "author": "Niall Crosby <niall.crosby@ag-grid.com>",
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/ceolter/ag-grid/issues"
@@ -48,9 +49,11 @@
     "nib": "^1.1.0",
     "stylus": "0.53.0",
     "vinyl-buffer": "1.0.0",
-    "typescript": "1.7.5",
+    "typescript": "2.2.x",
     "merge2": "0.3.6",
     "webpack-stream": "3.1.0",
-    "webpack": "1.12.12"
+    "webpack": "2.2.1",
+    "gulp-replace": "0.5.4",
+    "gulp-if": "2.0.1"
   }
 }

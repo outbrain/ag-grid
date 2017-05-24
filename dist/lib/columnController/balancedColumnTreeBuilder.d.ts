@@ -1,19 +1,21 @@
-// Type definitions for ag-grid v4.0.2
+// Type definitions for ag-grid v10.0.0
 // Project: http://www.ag-grid.com/
 // Definitions by: Niall Crosby <https://github.com/ceolter/>
-// Definitions: https://github.com/borisyankov/DefinitelyTyped
-import { LoggerFactory } from '../logger';
-import { AbstractColDef } from "../entities/colDef";
+import { ColGroupDef } from "../entities/colDef";
+import { ColDef } from "../entities/colDef";
 export declare class BalancedColumnTreeBuilder {
     private gridOptionsWrapper;
     private columnUtils;
     private context;
     private logger;
-    agWire(loggerFactory: LoggerFactory): void;
-    createBalancedColumnGroups(abstractColDefs: AbstractColDef[]): any;
+    private setBeans(loggerFactory);
+    createBalancedColumnGroups(abstractColDefs: (ColDef | ColGroupDef)[], primaryColumns: boolean): any;
     private balanceColumnTree(unbalancedTree, currentDept, columnDept, columnKeyCreator);
     private findMaxDept(treeChildren, dept);
-    private recursivelyCreateColumns(abstractColDefs, level, columnKeyCreator);
+    private recursivelyCreateColumns(abstractColDefs, level, columnKeyCreator, primaryColumns);
+    private createColumnGroup(columnKeyCreator, primaryColumns, colGroupDef, level);
+    private createMergedColGroupDef(colGroupDef);
+    private createColumn(columnKeyCreator, primaryColumns, colDef3);
     private checkForDeprecatedItems(colDef);
     private isColumnGroup(abstractColDef);
 }

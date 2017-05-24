@@ -2,23 +2,37 @@ import {OriginalColumnGroupChild} from "./originalColumnGroupChild";
 import {ColGroupDef} from "./colDef";
 import {ColumnGroup} from "./columnGroup";
 import {Column} from "./column";
+import {EventService} from "../eventService";
+import {IEventEmitter} from "../interfaces/iEventEmitter";
 
-export class OriginalColumnGroup implements OriginalColumnGroupChild {
+export class OriginalColumnGroup implements OriginalColumnGroupChild, IEventEmitter  {
+    public static EVENT_EXPANDED_CHANGED = 'expandedChanged';
+
+    private localEventService = new EventService();
 
     private colGroupDef: ColGroupDef;
+
     private children: OriginalColumnGroupChild[];
     private groupId: string;
-
     private expandable = false;
-    private expanded = false;
 
-    constructor(colGroupDef: ColGroupDef, groupId: string) {
+    private expanded: boolean;
+    private padding: boolean;
+
+    constructor(colGroupDef: ColGroupDef, groupId: string, padding: boolean) {
         this.colGroupDef = colGroupDef;
         this.groupId = groupId;
+        this.expanded = colGroupDef && !!colGroupDef.openByDefault;
+        this.padding = padding;
+    }
+
+    public isPadding(): boolean {
+        return this.padding;
     }
 
     public setExpanded(expanded: boolean): void {
         this.expanded = expanded;
+        this.localEventService.dispatchEvent(OriginalColumnGroup.EVENT_EXPANDED_CHANGED);
     }
 
     public isExpandable(): boolean {
@@ -66,11 +80,10 @@ export class OriginalColumnGroup implements OriginalColumnGroupChild {
     }
 
     public getColumnGroupShow(): string {
-        if (this.colGroupDef) {
+        if (!this.padding) {
             return this.colGroupDef.columnGroupShow;
         } else {
-            // if there is no col def, then this must be a padding
-            // group, which means we have exactly only child. we then
+            // if this is padding we have exactly only child. we then
             // take the value from the child and push it up, making
             // this group 'invisible'.
             return this.children[0].getColumnGroupShow();
@@ -79,6 +92,7 @@ export class OriginalColumnGroup implements OriginalColumnGroupChild {
 
     // need to check that this group has at least one col showing when both expanded and contracted.
     // if not, then we don't allow expanding and contracting on this group
+
     public calculateExpandable() {
         // want to make sure the group doesn't disappear when it's open
         var atLeastOneShowingWhenOpen = false;
@@ -104,5 +118,13 @@ export class OriginalColumnGroup implements OriginalColumnGroupChild {
         }
 
         this.expandable = atLeastOneShowingWhenOpen && atLeastOneShowingWhenClosed && atLeastOneChangeable;
+    }
+
+    addEventListener(eventType: string, listener: Function): void {
+        this.localEventService.addEventListener(eventType, listener);
+    }
+
+    removeEventListener(eventType: string, listener: Function): void {
+        this.localEventService.removeEventListener(eventType, listener);
     }
 }

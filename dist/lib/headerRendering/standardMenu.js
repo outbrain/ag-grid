@@ -1,9 +1,10 @@
 /**
  * ag-grid - Advanced Data Grid / Data Table supporting Javascript / React / AngularJS / Web Components
- * @version v4.0.2
+ * @version v10.0.0
  * @link http://www.ag-grid.com/
  * @license MIT
  */
+"use strict";
 var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
     var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
     if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
@@ -13,52 +14,85 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+Object.defineProperty(exports, "__esModule", { value: true });
 var context_1 = require("../context/context");
 var filterManager_1 = require("../filter/filterManager");
-var utils_1 = require('../utils');
-var context_2 = require("../context/context");
+var utils_1 = require("../utils");
 var popupService_1 = require("../widgets/popupService");
 var gridOptionsWrapper_1 = require("../gridOptionsWrapper");
+var eventService_1 = require("../eventService");
 var StandardMenuFactory = (function () {
     function StandardMenuFactory() {
     }
-    StandardMenuFactory.prototype.showMenu = function (column, eventSource) {
+    StandardMenuFactory.prototype.showMenuAfterMouseEvent = function (column, mouseEvent) {
+        var _this = this;
+        this.showPopup(column, function (eMenu) {
+            _this.popupService.positionPopupUnderMouseEvent({
+                column: column,
+                type: 'columnMenu',
+                mouseEvent: mouseEvent,
+                ePopup: eMenu
+            });
+        });
+    };
+    StandardMenuFactory.prototype.showMenuAfterButtonClick = function (column, eventSource) {
+        var _this = this;
+        this.showPopup(column, function (eMenu) {
+            _this.popupService.positionPopupUnderComponent({ type: 'columnMenu', eventSource: eventSource,
+                ePopup: eMenu, keepWithinBounds: true, column: column });
+        });
+    };
+    StandardMenuFactory.prototype.showPopup = function (column, positionCallback) {
+        var _this = this;
         var filterWrapper = this.filterManager.getOrCreateFilterWrapper(column);
         var eMenu = document.createElement('div');
         utils_1.Utils.addCssClass(eMenu, 'ag-menu');
         eMenu.appendChild(filterWrapper.gui);
+        var hidePopup;
+        var bodyScrollListener = function (event) {
+            // if h scroll, popup is no longer over the column
+            if (event.direction === 'horizontal') {
+                hidePopup();
+            }
+        };
+        this.eventService.addEventListener('bodyScroll', bodyScrollListener);
+        var closedCallback = function () {
+            _this.eventService.removeEventListener('bodyScroll', bodyScrollListener);
+        };
         // need to show filter before positioning, as only after filter
         // is visible can we find out what the width of it is
-        var hidePopup = this.popupService.addAsModalPopup(eMenu, true);
-        this.popupService.positionPopupUnderComponent({ eventSource: eventSource, ePopup: eMenu, keepWithinBounds: true });
+        hidePopup = this.popupService.addAsModalPopup(eMenu, true, closedCallback);
+        positionCallback(eMenu);
         if (filterWrapper.filter.afterGuiAttached) {
             var params = {
-                hidePopup: hidePopup,
-                eventSource: eventSource
+                hidePopup: hidePopup
             };
             filterWrapper.filter.afterGuiAttached(params);
         }
     };
     StandardMenuFactory.prototype.isMenuEnabled = function (column) {
         // for standard, we show menu if filter is enabled, and he menu is not suppressed
-        return this.gridOptionsWrapper.isEnableFilter();
+        return this.gridOptionsWrapper.isEnableFilter() && column.isFilterAllowed();
     };
-    __decorate([
-        context_2.Autowired('filterManager'), 
-        __metadata('design:type', filterManager_1.FilterManager)
-    ], StandardMenuFactory.prototype, "filterManager", void 0);
-    __decorate([
-        context_2.Autowired('popupService'), 
-        __metadata('design:type', popupService_1.PopupService)
-    ], StandardMenuFactory.prototype, "popupService", void 0);
-    __decorate([
-        context_2.Autowired('gridOptionsWrapper'), 
-        __metadata('design:type', gridOptionsWrapper_1.GridOptionsWrapper)
-    ], StandardMenuFactory.prototype, "gridOptionsWrapper", void 0);
-    StandardMenuFactory = __decorate([
-        context_1.Bean('menuFactory'), 
-        __metadata('design:paramtypes', [])
-    ], StandardMenuFactory);
     return StandardMenuFactory;
-})();
+}());
+__decorate([
+    context_1.Autowired('eventService'),
+    __metadata("design:type", eventService_1.EventService)
+], StandardMenuFactory.prototype, "eventService", void 0);
+__decorate([
+    context_1.Autowired('filterManager'),
+    __metadata("design:type", filterManager_1.FilterManager)
+], StandardMenuFactory.prototype, "filterManager", void 0);
+__decorate([
+    context_1.Autowired('popupService'),
+    __metadata("design:type", popupService_1.PopupService)
+], StandardMenuFactory.prototype, "popupService", void 0);
+__decorate([
+    context_1.Autowired('gridOptionsWrapper'),
+    __metadata("design:type", gridOptionsWrapper_1.GridOptionsWrapper)
+], StandardMenuFactory.prototype, "gridOptionsWrapper", void 0);
+StandardMenuFactory = __decorate([
+    context_1.Bean('menuFactory')
+], StandardMenuFactory);
 exports.StandardMenuFactory = StandardMenuFactory;

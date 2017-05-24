@@ -1,11 +1,5 @@
-export interface Filter {
+import {IFilter} from "../interfaces/iFilter";
 
-     // mandatory methods
-    getGui(): any;
-    isFilterActive(): boolean;
-    doesFilterPass(params: any): boolean;
-
-    // optional methods
-    afterGuiAttached?(params?: {hidePopup?: Function}): void;
-    onNewRowsLoaded?(): void;
+// deprecated, use iFilter
+export interface Filter extends IFilter {
 }

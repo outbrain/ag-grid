@@ -1,38 +1,41 @@
-// Type definitions for ag-grid v4.0.2
+// Type definitions for ag-grid v10.0.0
 // Project: http://www.ag-grid.com/
 // Definitions by: Niall Crosby <https://github.com/ceolter/>
-// Definitions: https://github.com/borisyankov/DefinitelyTyped
 import { ColumnGroupChild } from "./columnGroupChild";
 import { OriginalColumnGroupChild } from "./originalColumnGroupChild";
-import { ColDef } from "./colDef";
-import { AbstractColDef } from "./colDef";
+import { ColDef, AbstractColDef, IAggFunc } from "./colDef";
 import { RowNode } from "./rowNode";
-export declare class Column implements ColumnGroupChild, OriginalColumnGroupChild {
+import { ICellRendererFunc, ICellRendererComp } from "../rendering/cellRenderers/iCellRenderer";
+import { ICellEditorComp } from "../rendering/cellEditors/iCellEditor";
+import { IFilter } from "../interfaces/iFilter";
+import { IEventEmitter } from "../interfaces/iEventEmitter";
+export declare class Column implements ColumnGroupChild, OriginalColumnGroupChild, IEventEmitter {
     static EVENT_MOVING_CHANGED: string;
     static EVENT_LEFT_CHANGED: string;
     static EVENT_WIDTH_CHANGED: string;
     static EVENT_LAST_LEFT_PINNED_CHANGED: string;
     static EVENT_FIRST_RIGHT_PINNED_CHANGED: string;
     static EVENT_VISIBLE_CHANGED: string;
+    static EVENT_FILTER_CHANGED: string;
     static EVENT_FILTER_ACTIVE_CHANGED: string;
     static EVENT_SORT_CHANGED: string;
+    static EVENT_ROW_GROUP_CHANGED: string;
+    static EVENT_PIVOT_CHANGED: string;
+    static EVENT_VALUE_CHANGED: string;
     static PINNED_RIGHT: string;
     static PINNED_LEFT: string;
-    static AGG_SUM: string;
-    static AGG_MIN: string;
-    static AGG_MAX: string;
-    static AGG_FIRST: string;
-    static AGG_LAST: string;
     static SORT_ASC: string;
     static SORT_DESC: string;
     private gridOptionsWrapper;
     private columnUtils;
+    private frameworkFactory;
     private colDef;
     private colId;
     private actualWidth;
     private visible;
     private pinned;
     private left;
+    private oldLeft;
     private aggFunc;
     private sort;
     private sortedAt;
@@ -43,11 +46,43 @@ export declare class Column implements ColumnGroupChild, OriginalColumnGroupChil
     private maxWidth;
     private filterActive;
     private eventService;
-    constructor(colDef: ColDef, colId: String);
+    private fieldContainsDots;
+    private tooltipFieldContainsDots;
+    private rowGroupActive;
+    private pivotActive;
+    private aggregationActive;
+    private primary;
+    private cellRenderer;
+    private floatingCellRenderer;
+    private cellEditor;
+    private filter;
+    private parent;
+    constructor(colDef: ColDef, colId: String, primary: boolean);
+    setParent(parent: ColumnGroupChild): void;
+    getParent(): ColumnGroupChild;
     initialise(): void;
+    getCellRenderer(): {
+        new (): ICellRendererComp;
+    } | ICellRendererFunc | string;
+    getCellEditor(): {
+        new (): ICellEditorComp;
+    } | string;
+    getFloatingCellRenderer(): {
+        new (): ICellRendererComp;
+    } | ICellRendererFunc | string;
+    getFilter(): {
+        new (): IFilter;
+    } | string;
+    getUniqueId(): string;
+    isPrimary(): boolean;
+    isFilterAllowed(): boolean;
+    isFieldContainsDots(): boolean;
+    isTooltipFieldContainsDots(): boolean;
     private validate();
     addEventListener(eventType: string, listener: Function): void;
     removeEventListener(eventType: string, listener: Function): void;
+    private createIsColumnFuncParams(rowNode);
+    isSuppressNavigable(rowNode: RowNode): boolean;
     isCellEditable(rowNode: RowNode): boolean;
     setMoving(moving: boolean): void;
     isMoving(): boolean;
@@ -56,11 +91,13 @@ export declare class Column implements ColumnGroupChild, OriginalColumnGroupChil
     isSortAscending(): boolean;
     isSortDescending(): boolean;
     isSortNone(): boolean;
+    isSorting(): boolean;
     getSortedAt(): number;
     setSortedAt(sortedAt: number): void;
-    setAggFunc(aggFunc: string): void;
-    getAggFunc(): string;
+    setAggFunc(aggFunc: string | IAggFunc): void;
+    getAggFunc(): string | IAggFunc;
     getLeft(): number;
+    getOldLeft(): number;
     getRight(): number;
     setLeft(left: number): void;
     isFilterActive(): boolean;
@@ -87,4 +124,15 @@ export declare class Column implements ColumnGroupChild, OriginalColumnGroupChil
     getMinWidth(): number;
     getMaxWidth(): number;
     setMinimum(): void;
+    setRowGroupActive(rowGroup: boolean): void;
+    isRowGroupActive(): boolean;
+    setPivotActive(pivot: boolean): void;
+    isPivotActive(): boolean;
+    isAnyFunctionActive(): boolean;
+    isAnyFunctionAllowed(): boolean;
+    setValueActive(value: boolean): void;
+    isValueActive(): boolean;
+    isAllowPivot(): boolean;
+    isAllowValue(): boolean;
+    isAllowRowGroup(): boolean;
 }

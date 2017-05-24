@@ -1,20 +1,29 @@
 /**
  * ag-grid - Advanced Data Grid / Data Table supporting Javascript / React / AngularJS / Web Components
- * @version v4.0.2
+ * @version v10.0.0
  * @link http://www.ag-grid.com/
  * @license MIT
  */
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
 var columnGroup_1 = require("./columnGroup");
 var column_1 = require("./column");
+var eventService_1 = require("../eventService");
 var OriginalColumnGroup = (function () {
-    function OriginalColumnGroup(colGroupDef, groupId) {
+    function OriginalColumnGroup(colGroupDef, groupId, padding) {
+        this.localEventService = new eventService_1.EventService();
         this.expandable = false;
-        this.expanded = false;
         this.colGroupDef = colGroupDef;
         this.groupId = groupId;
+        this.expanded = colGroupDef && !!colGroupDef.openByDefault;
+        this.padding = padding;
     }
+    OriginalColumnGroup.prototype.isPadding = function () {
+        return this.padding;
+    };
     OriginalColumnGroup.prototype.setExpanded = function (expanded) {
         this.expanded = expanded;
+        this.localEventService.dispatchEvent(OriginalColumnGroup.EVENT_EXPANDED_CHANGED);
     };
     OriginalColumnGroup.prototype.isExpandable = function () {
         return this.expandable;
@@ -53,12 +62,11 @@ var OriginalColumnGroup = (function () {
         });
     };
     OriginalColumnGroup.prototype.getColumnGroupShow = function () {
-        if (this.colGroupDef) {
+        if (!this.padding) {
             return this.colGroupDef.columnGroupShow;
         }
         else {
-            // if there is no col def, then this must be a padding
-            // group, which means we have exactly only child. we then
+            // if this is padding we have exactly only child. we then
             // take the value from the child and push it up, making
             // this group 'invisible'.
             return this.children[0].getColumnGroupShow();
@@ -92,6 +100,13 @@ var OriginalColumnGroup = (function () {
         }
         this.expandable = atLeastOneShowingWhenOpen && atLeastOneShowingWhenClosed && atLeastOneChangeable;
     };
+    OriginalColumnGroup.prototype.addEventListener = function (eventType, listener) {
+        this.localEventService.addEventListener(eventType, listener);
+    };
+    OriginalColumnGroup.prototype.removeEventListener = function (eventType, listener) {
+        this.localEventService.removeEventListener(eventType, listener);
+    };
     return OriginalColumnGroup;
-})();
+}());
+OriginalColumnGroup.EVENT_EXPANDED_CHANGED = 'expandedChanged';
 exports.OriginalColumnGroup = OriginalColumnGroup;

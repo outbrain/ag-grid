@@ -1,28 +1,13 @@
-import {Utils as _} from '../utils';
-import {HeaderTemplateLoader} from "./headerTemplateLoader";
 import {GridOptionsWrapper} from "../gridOptionsWrapper";
 import {ColumnController} from "../columnController/columnController";
-import {Grid} from "../grid";
-import {FilterManager} from "../filter/filterManager";
 import {GridPanel} from "../gridPanel/gridPanel";
-import {ColumnGroupChild} from "../entities/columnGroupChild";
-import {ColumnGroup} from "../entities/columnGroup";
-import {RenderedHeaderGroupCell} from "./renderedHeaderGroupCell";
 import {Column} from "../entities/column";
-import {RenderedHeaderCell} from "./renderedHeaderCell";
-import {HorizontalDragService} from "./horizontalDragService";
-import {Bean} from "../context/context";
-import {Qualifier} from "../context/context";
-import {GridCore} from "../gridCore";
-import {PopupService} from "../widgets/popupService";
-import {Autowired} from "../context/context";
-import {Context} from "../context/context";
-import {IRenderedHeaderElement} from "./iRenderedHeaderElement";
+import {Bean, Autowired, Context, PostConstruct, PreDestroy} from "../context/context";
 import {HeaderContainer} from "./headerContainer";
 import {EventService} from "../eventService";
 import {Events} from "../events";
-import {ColumnChangeEvent} from "../columnChangeEvent";
-import {PostConstruct} from "../context/context";
+import {ScrollVisibleService} from "../gridPanel/scrollVisibleService";
+import {Component} from "../widgets/component";
 
 @Bean('headerRenderer')
 export class HeaderRenderer {
@@ -32,10 +17,13 @@ export class HeaderRenderer {
     @Autowired('gridPanel') private gridPanel: GridPanel;
     @Autowired('context') private context: Context;
     @Autowired('eventService') private eventService: EventService;
+    @Autowired('scrollVisibleService') private scrollVisibleService: ScrollVisibleService;
 
     private pinnedLeftContainer: HeaderContainer;
     private pinnedRightContainer: HeaderContainer;
     private centerContainer: HeaderContainer;
+
+    private childContainers: HeaderContainer[];
 
     private eHeaderViewport: HTMLElement;
     private eRoot: HTMLElement;
@@ -47,77 +35,82 @@ export class HeaderRenderer {
         this.eRoot = this.gridPanel.getRoot();
         this.eHeaderOverlay = this.gridPanel.getHeaderOverlay();
 
-        this.pinnedLeftContainer = new HeaderContainer(this.gridPanel.getPinnedLeftHeader(), null, this.eRoot, Column.PINNED_LEFT);
-        this.pinnedRightContainer = new HeaderContainer(this.gridPanel.getPinnedRightHeader(), null, this.eRoot, Column.PINNED_RIGHT);
         this.centerContainer = new HeaderContainer(this.gridPanel.getHeaderContainer(), this.gridPanel.getHeaderViewport(), this.eRoot, null);
+        this.childContainers = [this.centerContainer];
 
-        this.context.wireBean(this.pinnedLeftContainer);
-        this.context.wireBean(this.pinnedRightContainer);
-        this.context.wireBean(this.centerContainer);
+        if (!this.gridOptionsWrapper.isForPrint()) {
+            this.pinnedLeftContainer = new HeaderContainer(this.gridPanel.getPinnedLeftHeader(), null, this.eRoot, Column.PINNED_LEFT);
+            this.pinnedRightContainer = new HeaderContainer(this.gridPanel.getPinnedRightHeader(), null, this.eRoot, Column.PINNED_RIGHT);
+            this.childContainers.push(this.pinnedLeftContainer);
+            this.childContainers.push(this.pinnedRightContainer);
+        }
 
-        // unlike the table data, the header more often 'refreshes everything' as a way to redraw, rather than
-        // do delta changes based on the event. this is because groups have bigger impacts, eg a column move
-        // can end up in a group splitting into two, or joining into one. this complexity makes the job much
-        // harder to do delta updates. instead we just shotgun - which is fine, as the header is relatively
-        // small compared to the body, so the cpu cost is low in comparison. it does mean we don't get any
-        // animations.
+        this.childContainers.forEach( container => this.context.wireBean(container) );
 
-        this.eventService.addEventListener(Events.EVENT_COLUMN_EVERYTHING_CHANGED, this.refreshHeader.bind(this));
-        this.eventService.addEventListener(Events.EVENT_COLUMN_ROW_GROUP_CHANGE, this.refreshHeader.bind(this));
-        this.eventService.addEventListener(Events.EVENT_COLUMN_MOVED, this.refreshHeader.bind(this));
-        this.eventService.addEventListener(Events.EVENT_COLUMN_VISIBLE, this.refreshHeader.bind(this));
-        this.eventService.addEventListener(Events.EVENT_COLUMN_GROUP_OPENED, this.refreshHeader.bind(this));
-        this.eventService.addEventListener(Events.EVENT_COLUMN_PINNED, this.refreshHeader.bind(this));
-        this.eventService.addEventListener(Events.EVENT_HEADER_HEIGHT_CHANGED, this.refreshHeader.bind(this));
+        // when grid columns change, it means the number of rows in the header has changed and it's all new columns
+        this.eventService.addEventListener(Events.EVENT_GRID_COLUMNS_CHANGED, this.onGridColumnsChanged.bind(this));
+
+        // shotgun way to get labels to change, eg from sum(amount) to avg(amount)
+        this.eventService.addEventListener(Events.EVENT_COLUMN_VALUE_CHANGED, this.refreshHeader.bind(this));
 
         // for resized, the individual cells take care of this, so don't need to refresh everything
         this.eventService.addEventListener(Events.EVENT_COLUMN_RESIZED, this.setPinnedColContainerWidth.bind(this));
+        this.eventService.addEventListener(Events.EVENT_DISPLAYED_COLUMNS_CHANGED, this.setPinnedColContainerWidth.bind(this));
+        this.eventService.addEventListener(Events.EVENT_SCROLL_VISIBILITY_CHANGED, this.onScrollVisibilityChanged.bind(this));
 
         if (this.columnController.isReady()) {
             this.refreshHeader();
         }
     }
 
+    private onScrollVisibilityChanged(): void {
+        this.setPinnedColContainerWidth();
+    }
+
+    public forEachHeaderElement(callback: (renderedHeaderElement: Component)=>void): void {
+        this.childContainers.forEach( childContainer => childContainer.forEachHeaderElement(callback) );
+    }
+    
+    @PreDestroy
+    private destroy(): void {
+        this.childContainers.forEach( container => container.destroy() );
+    }
+
+    private onGridColumnsChanged(): void {
+        this.setHeight();
+    }
+
     // this is called from the API and refreshes everything, should be broken out
     // into refresh everything vs just something changed
     public refreshHeader() {
-        this.pinnedLeftContainer.removeAllChildren();
-        this.pinnedRightContainer.removeAllChildren();
-        this.centerContainer.removeAllChildren();
 
-        this.pinnedLeftContainer.insertHeaderRowsIntoContainer();
-        this.pinnedRightContainer.insertHeaderRowsIntoContainer();
-        this.centerContainer.insertHeaderRowsIntoContainer();
+        this.setHeight();
 
-        // if forPrint, overlay is missing
-        var rowHeight = this.gridOptionsWrapper.getHeaderHeight();
-
-        // we can probably get rid of this when we no longer need the overlay
-        var dept = this.columnController.getColumnDept();
-        if (this.eHeaderOverlay) {
-            this.eHeaderOverlay.style.height = rowHeight + 'px';
-            this.eHeaderOverlay.style.top = ((dept-1) * rowHeight) + 'px';
-        }
+        this.childContainers.forEach( container => container.refresh() );
 
         this.setPinnedColContainerWidth();
     }
 
-    public setPinnedColContainerWidth() {
-        if (this.gridOptionsWrapper.isForPrint()) {
-            // pinned col doesn't exist when doing forPrint
-            return;
+    private setHeight(): void {
+        // if forPrint, overlay is missing
+        if (this.eHeaderOverlay) {
+            var rowHeight = this.gridOptionsWrapper.getHeaderHeight();
+            // we can probably get rid of this when we no longer need the overlay
+            var dept = this.columnController.getHeaderRowCount();
+            this.eHeaderOverlay.style.height = rowHeight + 'px';
+            this.eHeaderOverlay.style.top = ((dept-1) * rowHeight) + 'px';
         }
+    }
+    
+    public setPinnedColContainerWidth() {
+        // pinned col doesn't exist when doing forPrint
+        if (this.gridOptionsWrapper.isForPrint()) { return; }
 
-        var pinnedLeftWidth = this.columnController.getPinnedLeftContainerWidth() + 'px';
-        this.eHeaderViewport.style.marginLeft = pinnedLeftWidth;
+        let pinnedLeftWidthWithScroll = this.scrollVisibleService.getPinnedLeftWithScrollWidth();
+        let pinnedRightWidthWithScroll = this.scrollVisibleService.getPinnedRightWithScrollWidth();
 
-        var pinnedRightWidth = this.columnController.getPinnedRightContainerWidth() + 'px';
-        this.eHeaderViewport.style.marginRight = pinnedRightWidth;
+        this.eHeaderViewport.style.marginLeft = pinnedLeftWidthWithScroll + 'px';
+        this.eHeaderViewport.style.marginRight = pinnedRightWidthWithScroll + 'px';
     }
 
-    public onIndividualColumnResized(column: Column): void {
-        this.pinnedLeftContainer.onIndividualColumnResized(column);
-        this.pinnedRightContainer.onIndividualColumnResized(column);
-        this.centerContainer.onIndividualColumnResized(column);
-    }
 }

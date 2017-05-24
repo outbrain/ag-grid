@@ -1,28 +1,36 @@
-// Type definitions for ag-grid v4.0.2
+// Type definitions for ag-grid v10.0.0
 // Project: http://www.ag-grid.com/
 // Definitions by: Niall Crosby <https://github.com/ceolter/>
-// Definitions: https://github.com/borisyankov/DefinitelyTyped
-import { ProcessCellForExportParams } from "./entities/gridOptions";
-export interface CsvExportParams {
-    skipHeader?: boolean;
-    skipFooters?: boolean;
-    skipGroups?: boolean;
-    fileName?: string;
-    customHeader?: string;
-    customFooter?: string;
-    allColumns?: boolean;
-    columnSeparator?: string;
-    onlySelected?: boolean;
-    processCellCallback?(params: ProcessCellForExportParams): void;
+import { RowAccumulator, BaseGridSerializingSession, RowSpanningAccumulator } from "./gridSerializer";
+import { Column } from "./entities/column";
+import { ColumnController } from "./columnController/columnController";
+import { ValueService } from "./valueService";
+import { GridOptionsWrapper } from "./gridOptionsWrapper";
+import { CsvExportParams, ProcessCellForExportParams, ProcessHeaderForExportParams } from "./exportParams";
+export declare class CsvSerializingSession extends BaseGridSerializingSession<string> {
+    private suppressQuotes;
+    private columnSeparator;
+    private result;
+    private lineOpened;
+    constructor(columnController: ColumnController, valueService: ValueService, gridOptionsWrapper: GridOptionsWrapper, processCellCallback: (params: ProcessCellForExportParams) => string, processHeaderCallback: (params: ProcessHeaderForExportParams) => string, suppressQuotes: boolean, columnSeparator: string);
+    prepare(columnsToExport: Column[]): void;
+    addCustomHeader(customHeader: string): void;
+    addCustomFooter(customFooter: string): void;
+    onNewHeaderGroupingRow(): RowSpanningAccumulator;
+    private onNewHeaderGroupingRowColumn(header, index, span);
+    onNewHeaderRow(): RowAccumulator;
+    private onNewHeaderRowColumn(column, index, node?);
+    onNewBodyRow(): RowAccumulator;
+    private onNewBodyRowColumn(column, index, node?);
+    private putInQuotes(value, suppressQuotes);
+    parse(): string;
 }
 export declare class CsvCreator {
-    private rowModel;
+    private downloader;
+    private gridSerializer;
     private columnController;
     private valueService;
     private gridOptionsWrapper;
-    exportDataAsCsv(params?: CsvExportParams): void;
+    exportDataAsCsv(params?: CsvExportParams): string;
     getDataAsCsv(params?: CsvExportParams): string;
-    private processCell(rowNode, column, value, processCellCallback);
-    private createValueForGroupNode(node);
-    private escape(value);
 }

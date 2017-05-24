@@ -1,173 +1,102 @@
-import {ColumnController} from "./columnController/columnController";
-import {Grid} from "./grid";
-import {ValueService} from "./valueService";
+import {Bean, Autowired} from "./context/context";
+import {GridSerializer, RowAccumulator, BaseGridSerializingSession, RowSpanningAccumulator} from "./gridSerializer";
+import {Downloader} from "./downloader";
 import {Column} from "./entities/column";
 import {RowNode} from "./entities/rowNode";
-import {Bean} from "./context/context";
-import {Qualifier} from "./context/context";
-import {GridCore} from "./gridCore";
-import {Autowired} from "./context/context";
-import {IRowModel} from "./interfaces/iRowModel";
+import {ColumnController} from "./columnController/columnController";
+import {ValueService} from "./valueService";
 import {GridOptionsWrapper} from "./gridOptionsWrapper";
-import {ProcessCellForExportParams} from "./entities/gridOptions";
+import {CsvExportParams, ProcessCellForExportParams, ProcessHeaderForExportParams} from "./exportParams";
 
 var LINE_SEPARATOR = '\r\n';
 
-export interface CsvExportParams {
-    skipHeader?: boolean;
-    skipFooters?: boolean;
-    skipGroups?: boolean;
-    fileName?: string;
-    customHeader?: string;
-    customFooter?: string;
-    allColumns?: boolean;
-    columnSeparator?: string;
-    onlySelected?: boolean;
-    processCellCallback?(params: ProcessCellForExportParams): void;
-}
+export class CsvSerializingSession extends BaseGridSerializingSession<string> {
+    private result:string = '';
+    private lineOpened:boolean = false;
 
-@Bean('csvCreator')
-export class CsvCreator {
-
-    @Autowired('rowModel') private rowModel: IRowModel;
-    @Autowired('columnController') private columnController: ColumnController;
-    @Autowired('valueService') private valueService: ValueService;
-    @Autowired('gridOptionsWrapper') private gridOptionsWrapper: GridOptionsWrapper;
-
-    public exportDataAsCsv(params?: CsvExportParams): void {
-        var csvString = this.getDataAsCsv(params);
-        var fileNamePresent = params && params.fileName && params.fileName.length !== 0;
-        var fileName = fileNamePresent ? params.fileName : 'export.csv';
-        // for Excel, we need \ufeff at the start
-        // http://stackoverflow.com/questions/17879198/adding-utf-8-bom-to-string-blob
-        var blobObject = new Blob(["\ufeff", csvString], {
-            type: "text/csv;charset=utf-8;"
-        });
-        // Internet Explorer
-        if (window.navigator.msSaveOrOpenBlob) {
-            window.navigator.msSaveOrOpenBlob(blobObject, fileName);
-        } else {
-            // Chrome
-            var downloadLink = document.createElement("a");
-            downloadLink.href = (<any>window).URL.createObjectURL(blobObject);
-            (<any>downloadLink).download = fileName;
-
-            document.body.appendChild(downloadLink);
-            downloadLink.click();
-            document.body.removeChild(downloadLink);
-        }
+    constructor(
+        columnController: ColumnController,
+        valueService: ValueService,
+        gridOptionsWrapper: GridOptionsWrapper,
+        processCellCallback:(params: ProcessCellForExportParams)=>string,
+        processHeaderCallback:(params: ProcessHeaderForExportParams)=>string,
+        private suppressQuotes: boolean,
+        private columnSeparator: string
+    ){
+        super(columnController, valueService, gridOptionsWrapper, processCellCallback, processHeaderCallback);
     }
 
-    public getDataAsCsv(params?: CsvExportParams): string {
-        if (this.gridOptionsWrapper.isRowModelVirtual()) {
-            console.log('ag-Grid: getDataAsCsv not available when doing virtual pagination');
-            return '';
-        }
-
-        var result = '';
-
-        var skipGroups = params && params.skipGroups;
-        var skipHeader = params && params.skipHeader;
-        var skipFooters = params && params.skipFooters;
-        var includeCustomHeader = params && params.customHeader;
-        var includeCustomFooter = params && params.customFooter;
-        var allColumns = params && params.allColumns;
-        var onlySelected = params && params.onlySelected;
-        var columnSeparator = (params && params.columnSeparator) || ',';
-        var processCellCallback = params.processCellCallback;
-
-        var columnsToExport: Column[];
-        if (allColumns) {
-            columnsToExport = this.columnController.getAllColumns();
-        } else {
-            columnsToExport = this.columnController.getAllDisplayedColumns();
-        }
-
-        if (!columnsToExport || columnsToExport.length === 0) {
-            return '';
-        }
-
-        if (includeCustomHeader) {
-            result += params.customHeader;
-        }
-
-        // first pass, put in the header names of the cols
-        if (!skipHeader) {
-            columnsToExport.forEach( (column: Column, index: number)=> {
-                var nameForCol = this.columnController.getDisplayNameForCol(column);
-                if (nameForCol === null || nameForCol === undefined) {
-                    nameForCol = '';
-                }
-                if (index != 0) {
-                    result += columnSeparator;
-                }
-                result += '"' + this.escape(nameForCol) + '"';
-            });
-            result += LINE_SEPARATOR;
-        }
-
-        this.rowModel.forEachNodeAfterFilterAndSort( (node: RowNode) => {
-            if (skipGroups && node.group) { return; }
-
-            if (skipFooters && node.footer) { return; }
-
-            if (onlySelected && !node.isSelected()) { return; }
-
-            columnsToExport.forEach( (column: Column, index: number)=> {
-                var valueForCell: any;
-                if (node.group && index === 0) {
-                    valueForCell =  this.createValueForGroupNode(node);
-                } else {
-                    valueForCell =  this.valueService.getValue(column, node);
-                }
-                valueForCell = this.processCell(node, column, valueForCell, processCellCallback);
-                if (valueForCell === null || valueForCell === undefined) {
-                    valueForCell = '';
-                }
-                if (index != 0) {
-                    result += columnSeparator;
-                }
-                result += '"' + this.escape(valueForCell) + '"';
-            });
-
-            result += LINE_SEPARATOR;
-        });
-
-        if (includeCustomFooter) {
-            result += params.customFooter;
-        }
-
-        return result;
+    public prepare(columnsToExport: Column[]): void {
     }
 
-    private processCell(rowNode: RowNode, column: Column, value: any, processCellCallback:(params: ProcessCellForExportParams)=>void): any {
-        if (processCellCallback) {
-            return processCellCallback({
-                column: column,
-                node: rowNode,
-                value: value,
-                api: this.gridOptionsWrapper.getApi(),
-                columnApi: this.gridOptionsWrapper.getColumnApi(),
-                context: this.gridOptionsWrapper.getContext()
-            });
-        } else {
-            return value;
-        }
+    public addCustomHeader(customHeader: string): void {
+        if (!customHeader) return;
+        this.result += customHeader + LINE_SEPARATOR;
     }
 
-    private createValueForGroupNode(node: RowNode): string {
-        var keys = [node.key];
-        while (node.parent) {
-            node = node.parent;
-            keys.push(node.key);
-        }
-        return keys.reverse().join(' -> ');
+    public addCustomFooter(customFooter: string): void {
+        if (!customFooter) return;
+        this.result += customFooter + LINE_SEPARATOR;
     }
 
-    // replace each " with "" (ie two sets of double quotes is how to do double quotes in csv)
-    private escape(value: any): string {
+    public onNewHeaderGroupingRow(): RowSpanningAccumulator {
+        if(this.lineOpened) this.result += LINE_SEPARATOR;
+
+        return {
+            onColumn: this.onNewHeaderGroupingRowColumn.bind(this)
+        };
+    }
+
+    private onNewHeaderGroupingRowColumn (header: string, index: number, span:number) {
+        if (index != 0) {
+            this.result += this.columnSeparator;
+        }
+
+        this.result += header;
+        for (let i = 1; i<= span; i++){
+            this.result += this.columnSeparator + this.putInQuotes("", this.suppressQuotes);
+        }
+        this.lineOpened = true;
+    }
+
+    public onNewHeaderRow(): RowAccumulator {
+        if(this.lineOpened) this.result += LINE_SEPARATOR;
+
+        return {
+            onColumn:this.onNewHeaderRowColumn.bind(this)
+        };
+    }
+
+    private onNewHeaderRowColumn(column: Column, index: number, node?:RowNode):void{
+            if (index != 0) {
+                this.result += this.columnSeparator;
+            }
+            this.result += this.putInQuotes(this.extractHeaderValue(column), this.suppressQuotes);
+            this.lineOpened = true;
+    }
+
+    public onNewBodyRow(): RowAccumulator {
+        if(this.lineOpened) this.result += LINE_SEPARATOR;
+
+        return {
+            onColumn: this.onNewBodyRowColumn.bind(this)
+        };
+    }
+    
+    private onNewBodyRowColumn (column: Column, index: number, node?:RowNode):void{
+        if (index != 0) {
+            this.result += this.columnSeparator;
+        }
+        this.result += this.putInQuotes(this.extractRowCellValue(column, index, node), this.suppressQuotes);
+        this.lineOpened = true;
+    }
+
+
+    private putInQuotes(value: any, suppressQuotes: boolean): string {
+        if (suppressQuotes) { return value; }
+
         if (value === null || value === undefined) {
-            return '';
+            return '""';
         }
 
         var stringValue: string;
@@ -176,11 +105,55 @@ export class CsvCreator {
         } else if (typeof value.toString === 'function') {
             stringValue = value.toString();
         } else {
-            console.warn('known value type during csv conversion');
+            console.warn('unknown value type during csv conversion');
             stringValue = '';
         }
 
-        return stringValue.replace(/"/g, "\"\"");
+        // replace each " with "" (ie two sets of double quotes is how to do double quotes in csv)
+        var valueEscaped = stringValue.replace(/"/g, "\"\"");
+
+        return '"' + valueEscaped + '"';
     }
 
+    public parse(): string {
+        return this.result;
+    }
+}
+
+@Bean('csvCreator')
+export class CsvCreator {
+    @Autowired('downloader') private downloader: Downloader;
+    @Autowired('gridSerializer') private gridSerializer: GridSerializer;
+    @Autowired('columnController') private columnController: ColumnController;
+    @Autowired('valueService') private valueService: ValueService;
+    @Autowired('gridOptionsWrapper') private gridOptionsWrapper: GridOptionsWrapper;
+
+    public exportDataAsCsv(params?: CsvExportParams): string {
+        var fileNamePresent = params && params.fileName && params.fileName.length !== 0;
+        var fileName = fileNamePresent ? params.fileName : 'export.csv';
+
+
+        let dataAsCsv = this.getDataAsCsv(params);
+        this.downloader.download(
+            fileName,
+            dataAsCsv,
+            "text/csv;charset=utf-8;"
+        );
+        return dataAsCsv;
+    }
+
+    public getDataAsCsv(params?: CsvExportParams): string{
+        return this.gridSerializer.serialize(
+            new CsvSerializingSession(
+                this.columnController,
+                this.valueService,
+                this.gridOptionsWrapper,
+                params ? params.processCellCallback : null,
+                params ? params.processHeaderCallback : null,
+                params && params.suppressQuotes,
+                (params && params.columnSeparator) || ','
+            ),
+            params
+        );
+    }
 }

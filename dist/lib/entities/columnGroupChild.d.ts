@@ -1,11 +1,16 @@
-// Type definitions for ag-grid v4.0.2
+// Type definitions for ag-grid v10.0.0
 // Project: http://www.ag-grid.com/
 // Definitions by: Niall Crosby <https://github.com/ceolter/>
-// Definitions: https://github.com/borisyankov/DefinitelyTyped
 import { AbstractColDef } from "./colDef";
-export interface ColumnGroupChild {
+import { IEventEmitter } from "../interfaces/iEventEmitter";
+export interface ColumnGroupChild extends IEventEmitter {
+    getUniqueId(): string;
     getActualWidth(): number;
     getMinWidth(): number;
+    getLeft(): number;
+    getOldLeft(): number;
     getDefinition(): AbstractColDef;
     getColumnGroupShow(): string;
+    getParent(): ColumnGroupChild;
+    setParent(parent: ColumnGroupChild): void;
 }

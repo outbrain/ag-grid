@@ -1,13 +1,12 @@
-import {Bean} from "./context/context";
+import {Bean, Autowired} from "./context/context";
 import {Constants} from "./constants";
-import {Autowired} from "./context/context";
 import {ColumnController} from "./columnController/columnController";
 import {IRowModel} from "./interfaces/iRowModel";
-import {Column} from "./entities/column";
-import {FloatingRowModel} from "./rowControllers/floatingRowModel";
-import {Utils as _} from './utils';
+import {FloatingRowModel} from "./rowModels/floatingRowModel";
+import {Utils as _} from "./utils";
 import {GridRow} from "./entities/gridRow";
-import {GridCell} from "./entities/gridCell";
+import {GridCell, GridCellDef} from "./entities/gridCell";
+import {GridOptionsWrapper} from "./gridOptionsWrapper";
 
 @Bean('cellNavigationService')
 export class CellNavigationService {
@@ -15,13 +14,24 @@ export class CellNavigationService {
     @Autowired('columnController') private columnController: ColumnController;
     @Autowired('rowModel') private rowModel: IRowModel;
     @Autowired('floatingRowModel') private floatingRowModel: FloatingRowModel;
+    @Autowired('gridOptionsWrapper') private gridOptionsWrapper: GridOptionsWrapper;
 
     public getNextCellToFocus(key: any, lastCellToFocus: GridCell): GridCell {
         switch (key) {
             case Constants.KEY_UP : return this.getCellAbove(lastCellToFocus);
             case Constants.KEY_DOWN : return this.getCellBelow(lastCellToFocus);
-            case Constants.KEY_RIGHT : return this.getCellToRight(lastCellToFocus);
-            case Constants.KEY_LEFT : return this.getCellToLeft(lastCellToFocus);
+            case Constants.KEY_RIGHT :
+                if (this.gridOptionsWrapper.isEnableRtl()) {
+                    return this.getCellToLeft(lastCellToFocus);
+                } else {
+                    return this.getCellToRight(lastCellToFocus);
+                }
+            case Constants.KEY_LEFT :
+                if (this.gridOptionsWrapper.isEnableRtl()) {
+                    return this.getCellToRight(lastCellToFocus);
+                } else {
+                    return this.getCellToLeft(lastCellToFocus);
+                }
             default : console.log('ag-Grid: unknown key for navigation ' + key);
         }
     }
@@ -31,7 +41,8 @@ export class CellNavigationService {
         if (!colToLeft) {
             return null;
         } else {
-            return new GridCell(lastCell.rowIndex, lastCell.floating, colToLeft);
+            var gridCellDef = <GridCellDef> {rowIndex: lastCell.rowIndex, column: colToLeft, floating: lastCell.floating};
+            return new GridCell(gridCellDef);
         }
     }
 
@@ -41,7 +52,8 @@ export class CellNavigationService {
         if (!colToRight) {
             return null;
         } else {
-            return new GridCell(lastCell.rowIndex, lastCell.floating, colToRight);
+            var gridCellDef = <GridCellDef> {rowIndex: lastCell.rowIndex, column: colToRight, floating: lastCell.floating};
+            return new GridCell(gridCellDef);
         }
     }
 
@@ -76,7 +88,8 @@ export class CellNavigationService {
     private getCellBelow(lastCell: GridCell): GridCell {
         var rowBelow = this.getRowBelow(lastCell.getGridRow());
         if (rowBelow) {
-            return new GridCell(rowBelow.rowIndex, rowBelow.floating, lastCell.column);
+            var gridCellDef = <GridCellDef> {rowIndex: rowBelow.rowIndex, column: lastCell.column, floating: rowBelow.floating};
+            return new GridCell(gridCellDef);
         } else {
             return null;
         }
@@ -90,7 +103,7 @@ export class CellNavigationService {
             var lastBottomIndex = this.floatingRowModel.getFloatingBottomRowData().length - 1;
             return lastBottomIndex === gridRow.rowIndex;
         } else {
-            var lastBodyIndex = this.rowModel.getRowCount() - 1;
+            var lastBodyIndex = this.rowModel.getPageLastRow();
             return lastBodyIndex === gridRow.rowIndex;
         }
     }
@@ -126,14 +139,15 @@ export class CellNavigationService {
     private getCellAbove(lastCell: GridCell): GridCell {
         var rowAbove = this.getRowAbove(lastCell.getGridRow());
         if (rowAbove) {
-            return new GridCell(rowAbove.rowIndex, rowAbove.floating, lastCell.column);
+            var gridCellDef = <GridCellDef> {rowIndex: rowAbove.rowIndex, column: lastCell.column, floating: rowAbove.floating};
+            return new GridCell(gridCellDef);
         } else {
             return null;
         }
     }
 
     private getLastBodyCell(): GridRow {
-        var lastBodyRow = this.rowModel.getRowCount() - 1;
+        var lastBodyRow = this.rowModel.getPageLastRow();
         return new GridRow(lastBodyRow, null);
     }
 
@@ -142,6 +156,14 @@ export class CellNavigationService {
         return new GridRow(lastFloatingRow, Constants.FLOATING_TOP);
     }
 
+    public getNextTabbedCell(gridCell: GridCell, backwards: boolean): GridCell {
+        if (backwards) {
+            return this.getNextTabbedCellBackwards(gridCell);
+        } else {
+            return this.getNextTabbedCellForwards(gridCell);
+        }
+    }
+    
     public getNextTabbedCellForwards(gridCell: GridCell): GridCell {
 
         var displayedColumns = this.columnController.getAllDisplayedColumns();
@@ -164,7 +186,8 @@ export class CellNavigationService {
             newFloating = rowBelow.floating;
         }
 
-        return new GridCell(newRowIndex, newFloating, newColumn);
+        var gridCellDef = <GridCellDef> {rowIndex: newRowIndex, column: newColumn, floating: newFloating};
+        return new GridCell(gridCellDef);
     }
 
     public getNextTabbedCellBackwards(gridCell: GridCell): GridCell {
@@ -189,7 +212,8 @@ export class CellNavigationService {
             newFloating = rowAbove.floating;
         }
 
-        return new GridCell(newRowIndex, newFloating, newColumn);
+        var gridCellDef = <GridCellDef> {rowIndex: newRowIndex, column: newColumn, floating: newFloating};
+        return new GridCell(gridCellDef);
     }
 
 }

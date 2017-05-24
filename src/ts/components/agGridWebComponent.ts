@@ -1,5 +1,5 @@
 import {ComponentUtil} from "./componentUtil";
-import {Grid} from "../grid";
+import {Grid, GridParams} from "../grid";
 
 var registered = false;
 
@@ -27,11 +27,15 @@ export function initialiseAgGridWithWebComponents() {
            },
            get: function () {
                return this.__agGridGetProperty(key);
-           }
+           },
+           enumerable: true,
+           configurable: true
        });
     });
 
-    AgileGridProto.__agGridSetProperty = function (key:string, value:any) {
+    var agGridProtoNoType = <any> AgileGridProto;
+
+    agGridProtoNoType.__agGridSetProperty = function (key:string, value:any) {
         if (!this.__attributes) {
             this.__attributes = {};
         }
@@ -42,24 +46,27 @@ export function initialiseAgGridWithWebComponents() {
         this.onChange(changeObject);
     };
 
-    AgileGridProto.onChange = function (changes:any) {
+    agGridProtoNoType.onChange = function (changes:any) {
         if (this._initialised) {
-            ComponentUtil.processOnChange(changes, this._gridOptions, this.api);
+            ComponentUtil.processOnChange(changes, this._gridOptions, this.api, this.columnApi);
         }
     };
 
-    AgileGridProto.__agGridGetProperty = function (key:string) {
+    agGridProtoNoType.__agGridGetProperty = function (key:string) {
         if (!this.__attributes) {
             this.__attributes = {};
         }
         return this.__attributes[key];
     };
 
-    AgileGridProto.setGridOptions = function (options: any) {
+    agGridProtoNoType.setGridOptions = function (options: any) {
 
         var globalEventListener = this.globalEventListener.bind(this);
         this._gridOptions = ComponentUtil.copyAttributesToGridOptions(options, this);
-        this._agGrid = new Grid(this, this._gridOptions, globalEventListener);
+        var gridParams: GridParams = {
+            globalEventListener: globalEventListener
+        };
+        this._agGrid = new Grid(this, this._gridOptions, gridParams);
 
         this.api = options.api;
         this.columnApi = options.columnApi;
@@ -68,14 +75,14 @@ export function initialiseAgGridWithWebComponents() {
     };
 
     // copies all the attributes into this object
-    AgileGridProto.createdCallback = function () {
+    agGridProtoNoType.createdCallback = function () {
        for (var i = 0; i < this.attributes.length; i++) {
            var attribute = this.attributes[i];
            this.setPropertyFromAttribute(attribute);
        }
     };
 
-    AgileGridProto.setPropertyFromAttribute = function (attribute: any) {
+    agGridProtoNoType.setPropertyFromAttribute = function (attribute: any) {
         var name = toCamelCase(attribute.nodeName);
         var value = attribute.nodeValue;
         if (ComponentUtil.ALL_PROPERTIES.indexOf(name) >= 0) {
@@ -83,16 +90,16 @@ export function initialiseAgGridWithWebComponents() {
         }
     };
 
-    AgileGridProto.attachedCallback = function(params: any) {};
+    agGridProtoNoType.attachedCallback = function(params: any) {};
 
-    AgileGridProto.detachedCallback = function(params: any) {};
+    agGridProtoNoType.detachedCallback = function(params: any) {};
 
-    AgileGridProto.attributeChangedCallback = function(attributeName: string) {
+    agGridProtoNoType.attributeChangedCallback = function(attributeName: string) {
         var attribute = this.attributes[attributeName];
         this.setPropertyFromAttribute(attribute);
     };
 
-    AgileGridProto.globalEventListener = function(eventType: string, event: any): void {
+    agGridProtoNoType.globalEventListener = function(eventType: string, event: any): void {
         var eventLowerCase = eventType.toLowerCase();
         var browserEvent = new Event(eventLowerCase);
 

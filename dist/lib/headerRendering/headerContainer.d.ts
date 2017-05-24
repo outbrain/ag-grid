@@ -1,8 +1,7 @@
-// Type definitions for ag-grid v4.0.2
+// Type definitions for ag-grid v10.0.0
 // Project: http://www.ag-grid.com/
 // Definitions by: Niall Crosby <https://github.com/ceolter/>
-// Definitions: https://github.com/borisyankov/DefinitelyTyped
-import { Column } from "../entities/column";
+import { Component } from "../widgets/component";
 export declare class HeaderContainer {
     private gridOptionsWrapper;
     private context;
@@ -10,17 +9,27 @@ export declare class HeaderContainer {
     private dragAndDropService;
     private columnController;
     private gridPanel;
+    private eventService;
+    private scrollVisibleService;
     private eContainer;
     private eViewport;
     private eRoot;
+    private headerRowComps;
     private pinned;
-    private headerElements;
     private dropTarget;
     constructor(eContainer: HTMLElement, eViewport: HTMLElement, eRoot: HTMLElement, pinned: string);
-    init(): void;
-    removeAllChildren(): void;
-    insertHeaderRowsIntoContainer(): void;
-    private addTreeNodesAtDept(cellTree, dept, result);
-    private createHeaderElement(columnGroupChild);
-    onIndividualColumnResized(column: Column): void;
+    forEachHeaderElement(callback: (renderedHeaderElement: Component) => void): void;
+    private init();
+    private onColumnRowGroupChanged();
+    private onColumnValueChanged();
+    private onColumnResized();
+    private onDisplayedColumnsChanged();
+    private onScrollVisibilityChanged();
+    private setWidthIfPinnedContainer();
+    destroy(): void;
+    private onGridColumnsChanged();
+    refresh(): void;
+    private setupDragAndDrop();
+    private removeHeaderRowComps();
+    private createHeaderRowComps();
 }

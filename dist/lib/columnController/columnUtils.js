@@ -1,9 +1,10 @@
 /**
  * ag-grid - Advanced Data Grid / Data Table supporting Javascript / React / AngularJS / Web Components
- * @version v4.0.2
+ * @version v10.0.0
  * @link http://www.ag-grid.com/
  * @license MIT
  */
+"use strict";
 var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
     var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
     if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
@@ -13,6 +14,7 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+Object.defineProperty(exports, "__esModule", { value: true });
 var gridOptionsWrapper_1 = require("../gridOptionsWrapper");
 var columnGroup_1 = require("../entities/columnGroup");
 var originalColumnGroup_1 = require("../entities/originalColumnGroup");
@@ -36,10 +38,10 @@ var ColumnUtils = (function () {
             return colDef.width;
         }
     };
-    ColumnUtils.prototype.getPathForColumn = function (column, allDisplayedColumnGroups) {
+    ColumnUtils.prototype.getOriginalPathForColumn = function (column, originalBalancedTree) {
         var result = [];
         var found = false;
-        recursePath(allDisplayedColumnGroups, 0);
+        recursePath(originalBalancedTree, 0);
         // we should always find the path, but in case there is a bug somewhere, returning null
         // will make it fail rather than provide a 'hard to track down' bug
         if (found) {
@@ -55,7 +57,7 @@ var ColumnUtils = (function () {
                     return;
                 }
                 var node = balancedColumnTree[i];
-                if (node instanceof columnGroup_1.ColumnGroup) {
+                if (node instanceof originalColumnGroup_1.OriginalColumnGroup) {
                     var nextNode = node;
                     recursePath(nextNode.getChildren(), dept + 1);
                     result[dept] = node;
@@ -68,50 +70,83 @@ var ColumnUtils = (function () {
             }
         }
     };
-    ColumnUtils.prototype.deptFirstOriginalTreeSearch = function (tree, callback) {
+    /*    public getPathForColumn(column: Column, allDisplayedColumnGroups: ColumnGroupChild[]): ColumnGroup[] {
+            var result: ColumnGroup[] = [];
+            var found = false;
+    
+            recursePath(allDisplayedColumnGroups, 0);
+    
+            // we should always find the path, but in case there is a bug somewhere, returning null
+            // will make it fail rather than provide a 'hard to track down' bug
+            if (found) {
+                return result;
+            } else {
+                return null;
+            }
+    
+            function recursePath(balancedColumnTree: ColumnGroupChild[], dept: number): void {
+    
+                for (var i = 0; i<balancedColumnTree.length; i++) {
+                    if (found) {
+                        // quit the search, so 'result' is kept with the found result
+                        return;
+                    }
+                    var node = balancedColumnTree[i];
+                    if (node instanceof ColumnGroup) {
+                        var nextNode = <ColumnGroup> node;
+                        recursePath(nextNode.getChildren(), dept+1);
+                        result[dept] = node;
+                    } else {
+                        if (node === column) {
+                            found = true;
+                        }
+                    }
+                }
+            }
+        }*/
+    ColumnUtils.prototype.depthFirstOriginalTreeSearch = function (tree, callback) {
         var _this = this;
         if (!tree) {
             return;
         }
         tree.forEach(function (child) {
             if (child instanceof originalColumnGroup_1.OriginalColumnGroup) {
-                _this.deptFirstOriginalTreeSearch(child.getChildren(), callback);
+                _this.depthFirstOriginalTreeSearch(child.getChildren(), callback);
             }
             callback(child);
         });
     };
-    ColumnUtils.prototype.deptFirstAllColumnTreeSearch = function (tree, callback) {
+    ColumnUtils.prototype.depthFirstAllColumnTreeSearch = function (tree, callback) {
         var _this = this;
         if (!tree) {
             return;
         }
         tree.forEach(function (child) {
             if (child instanceof columnGroup_1.ColumnGroup) {
-                _this.deptFirstAllColumnTreeSearch(child.getChildren(), callback);
+                _this.depthFirstAllColumnTreeSearch(child.getChildren(), callback);
             }
             callback(child);
         });
     };
-    ColumnUtils.prototype.deptFirstDisplayedColumnTreeSearch = function (tree, callback) {
+    ColumnUtils.prototype.depthFirstDisplayedColumnTreeSearch = function (tree, callback) {
         var _this = this;
         if (!tree) {
             return;
         }
         tree.forEach(function (child) {
             if (child instanceof columnGroup_1.ColumnGroup) {
-                _this.deptFirstDisplayedColumnTreeSearch(child.getDisplayedChildren(), callback);
+                _this.depthFirstDisplayedColumnTreeSearch(child.getDisplayedChildren(), callback);
             }
             callback(child);
         });
     };
-    __decorate([
-        context_2.Autowired('gridOptionsWrapper'), 
-        __metadata('design:type', gridOptionsWrapper_1.GridOptionsWrapper)
-    ], ColumnUtils.prototype, "gridOptionsWrapper", void 0);
-    ColumnUtils = __decorate([
-        context_1.Bean('columnUtils'), 
-        __metadata('design:paramtypes', [])
-    ], ColumnUtils);
     return ColumnUtils;
-})();
+}());
+__decorate([
+    context_2.Autowired('gridOptionsWrapper'),
+    __metadata("design:type", gridOptionsWrapper_1.GridOptionsWrapper)
+], ColumnUtils.prototype, "gridOptionsWrapper", void 0);
+ColumnUtils = __decorate([
+    context_1.Bean('columnUtils')
+], ColumnUtils);
 exports.ColumnUtils = ColumnUtils;

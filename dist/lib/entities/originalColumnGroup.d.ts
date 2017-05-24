@@ -1,17 +1,21 @@
-// Type definitions for ag-grid v4.0.2
+// Type definitions for ag-grid v10.0.0
 // Project: http://www.ag-grid.com/
 // Definitions by: Niall Crosby <https://github.com/ceolter/>
-// Definitions: https://github.com/borisyankov/DefinitelyTyped
 import { OriginalColumnGroupChild } from "./originalColumnGroupChild";
 import { ColGroupDef } from "./colDef";
 import { Column } from "./column";
-export declare class OriginalColumnGroup implements OriginalColumnGroupChild {
+import { IEventEmitter } from "../interfaces/iEventEmitter";
+export declare class OriginalColumnGroup implements OriginalColumnGroupChild, IEventEmitter {
+    static EVENT_EXPANDED_CHANGED: string;
+    private localEventService;
     private colGroupDef;
     private children;
     private groupId;
     private expandable;
     private expanded;
-    constructor(colGroupDef: ColGroupDef, groupId: string);
+    private padding;
+    constructor(colGroupDef: ColGroupDef, groupId: string, padding: boolean);
+    isPadding(): boolean;
     setExpanded(expanded: boolean): void;
     isExpandable(): boolean;
     isExpanded(): boolean;
@@ -24,4 +28,6 @@ export declare class OriginalColumnGroup implements OriginalColumnGroupChild {
     private addLeafColumns(leafColumns);
     getColumnGroupShow(): string;
     calculateExpandable(): void;
+    addEventListener(eventType: string, listener: Function): void;
+    removeEventListener(eventType: string, listener: Function): void;
 }

@@ -1,9 +1,11 @@
 /**
  * ag-grid - Advanced Data Grid / Data Table supporting Javascript / React / AngularJS / Web Components
- * @version v4.0.2
+ * @version v10.0.0
  * @link http://www.ag-grid.com/
  * @license MIT
  */
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
 var events_1 = require("../events");
 var utils_1 = require("../utils");
 var ComponentUtil = (function () {
@@ -62,9 +64,8 @@ var ComponentUtil = (function () {
         }
     };
     // change this method, the caller should know if it's initialised or not, plus 'initialised'
-    // is not relevant for all component types.
-    // maybe pass in the api and columnApi instead???
-    ComponentUtil.processOnChange = function (changes, gridOptions, api) {
+    // is not relevant for all component types. maybe pass in the api and columnApi instead???
+    ComponentUtil.processOnChange = function (changes, gridOptions, api, columnApi) {
         //if (!component._initialised || !changes) { return; }
         if (!changes) {
             return;
@@ -97,7 +98,7 @@ var ComponentUtil = (function () {
             }
         });
         if (changes.showToolPanel) {
-            api.showToolPanel(changes.showToolPanel.currentValue);
+            api.showToolPanel(ComponentUtil.toBoolean(changes.showToolPanel.currentValue));
         }
         if (changes.quickFilterText) {
             api.setQuickFilter(changes.quickFilterText.currentValue);
@@ -118,8 +119,15 @@ var ComponentUtil = (function () {
             api.setDatasource(changes.datasource.currentValue);
         }
         if (changes.headerHeight) {
-            api.setHeaderHeight(changes.headerHeight.currentValue);
+            api.setHeaderHeight(ComponentUtil.toNumber(changes.headerHeight.currentValue));
         }
+        if (changes.paginationPageSize) {
+            api.paginationSetPageSize(ComponentUtil.toNumber(changes.paginationPageSize.currentValue));
+        }
+        if (changes.pivotMode) {
+            columnApi.setPivotMode(ComponentUtil.toBoolean(changes.pivotMode.currentValue));
+        }
+        api.dispatchEvent(events_1.Events.EVENT_COMPONENT_STATE_CHANGED, changes);
     };
     ComponentUtil.toBoolean = function (value) {
         if (typeof value === 'boolean') {
@@ -145,47 +153,67 @@ var ComponentUtil = (function () {
             return undefined;
         }
     };
-    // all the events are populated in here AFTER this class (at the bottom of the file).
-    ComponentUtil.EVENTS = [];
-    ComponentUtil.STRING_PROPERTIES = [
-        'sortingOrder', 'rowClass', 'rowSelection', 'overlayLoadingTemplate',
-        'overlayNoRowsTemplate', 'headerCellTemplate', 'quickFilterText', 'rowModelType'];
-    ComponentUtil.OBJECT_PROPERTIES = [
-        'rowStyle', 'context', 'groupColumnDef', 'localeText', 'icons', 'datasource'
-    ];
-    ComponentUtil.ARRAY_PROPERTIES = [
-        'slaveGrids', 'rowData', 'floatingTopRowData', 'floatingBottomRowData', 'columnDefs'
-    ];
-    ComponentUtil.NUMBER_PROPERTIES = [
-        'rowHeight', 'rowBuffer', 'colWidth', 'headerHeight', 'groupDefaultExpanded',
-        'minColWidth', 'maxColWidth'
-    ];
-    ComponentUtil.BOOLEAN_PROPERTIES = [
-        'toolPanelSuppressGroups', 'toolPanelSuppressValues',
-        'suppressRowClickSelection', 'suppressCellSelection', 'suppressHorizontalScroll', 'debug',
-        'enableColResize', 'enableCellExpressions', 'enableSorting', 'enableServerSideSorting',
-        'enableFilter', 'enableServerSideFilter', 'angularCompileRows', 'angularCompileFilters',
-        'angularCompileHeaders', 'groupSuppressAutoColumn', 'groupSelectsChildren', 'groupHideGroupColumns',
-        'groupIncludeFooter', 'groupUseEntireRow', 'groupSuppressRow', 'groupSuppressBlankHeader', 'forPrint',
-        'suppressMenuHide', 'rowDeselection', 'unSortIcon', 'suppressMultiSort', 'suppressScrollLag',
-        'singleClickEdit', 'suppressLoadingOverlay', 'suppressNoRowsOverlay', 'suppressAutoSize',
-        'suppressParentsInRowNodes', 'showToolPanel', 'suppressColumnMoveAnimation', 'suppressMovableColumns',
-        'suppressFieldDotNotation', 'enableRangeSelection', 'suppressEnterprise', 'rowGroupPanelShow',
-        'suppressContextMenu', 'suppressMenuFilterPanel', 'suppressMenuMainPanel', 'suppressMenuColumnPanel',
-        'enableStatusBar', 'rememberGroupStateWhenNewData'
-    ];
-    ComponentUtil.FUNCTION_PROPERTIES = ['headerCellRenderer', 'localeTextFunc', 'groupRowInnerRenderer',
-        'groupRowRenderer', 'groupAggFunction', 'isScrollLag', 'isExternalFilterPresent', 'getRowHeight',
-        'doesExternalFilterPass', 'getRowClass', 'getRowStyle', 'getHeaderCellTemplate', 'traverseNode',
-        'getContextMenuItems', 'getMainMenuItems', 'processRowPostCreate', 'processCellForClipboard'];
-    ComponentUtil.ALL_PROPERTIES = ComponentUtil.ARRAY_PROPERTIES
-        .concat(ComponentUtil.OBJECT_PROPERTIES)
-        .concat(ComponentUtil.STRING_PROPERTIES)
-        .concat(ComponentUtil.NUMBER_PROPERTIES)
-        .concat(ComponentUtil.FUNCTION_PROPERTIES)
-        .concat(ComponentUtil.BOOLEAN_PROPERTIES);
     return ComponentUtil;
-})();
+}());
+// all the events are populated in here AFTER this class (at the bottom of the file).
+ComponentUtil.EVENTS = [];
+ComponentUtil.STRING_PROPERTIES = [
+    'sortingOrder', 'rowClass', 'rowSelection', 'overlayLoadingTemplate',
+    'overlayNoRowsTemplate', 'headerCellTemplate', 'quickFilterText', 'rowModelType',
+    'editType'
+];
+ComponentUtil.OBJECT_PROPERTIES = [
+    'rowStyle', 'context', 'groupColumnDef', 'localeText', 'icons', 'datasource', 'enterpriseDatasource', 'viewportDatasource',
+    'groupRowRendererParams', 'aggFuncs', 'fullWidthCellRendererParams', 'defaultColGroupDef', 'defaultColDef', 'defaultExportParams'
+    //,'cellRenderers','cellEditors'
+];
+ComponentUtil.ARRAY_PROPERTIES = [
+    'slaveGrids', 'rowData', 'floatingTopRowData', 'floatingBottomRowData', 'columnDefs', 'excelStyles'
+];
+ComponentUtil.NUMBER_PROPERTIES = [
+    'rowHeight', 'rowBuffer', 'colWidth', 'headerHeight', 'groupHeaderHeight', 'floatingFiltersHeight',
+    'pivotHeaderHeight', 'pivotGroupHeaderHeight', 'groupDefaultExpanded',
+    'minColWidth', 'maxColWidth', 'viewportRowModelPageSize', 'viewportRowModelBufferSize',
+    'layoutInterval', 'autoSizePadding', 'maxBlocksInCache', 'maxConcurrentDatasourceRequests',
+    'cacheOverflowSize', 'paginationPageSize', 'infiniteBlockSize', 'infiniteInitialRowCount',
+    'scrollbarWidth', 'paginationStartPage', 'infiniteBlockSize'
+];
+ComponentUtil.BOOLEAN_PROPERTIES = [
+    'toolPanelSuppressRowGroups', 'toolPanelSuppressValues', 'toolPanelSuppressPivots', 'toolPanelSuppressPivotMode',
+    'suppressRowClickSelection', 'suppressCellSelection', 'suppressHorizontalScroll', 'debug',
+    'enableColResize', 'enableCellExpressions', 'enableSorting', 'enableServerSideSorting',
+    'enableFilter', 'enableServerSideFilter', 'angularCompileRows', 'angularCompileFilters',
+    'angularCompileHeaders', 'groupSuppressAutoColumn', 'groupSelectsChildren',
+    'groupIncludeFooter', 'groupUseEntireRow', 'groupSuppressRow', 'groupSuppressBlankHeader', 'forPrint',
+    'suppressMenuHide', 'rowDeselection', 'unSortIcon', 'suppressMultiSort', 'suppressScrollLag',
+    'singleClickEdit', 'suppressLoadingOverlay', 'suppressNoRowsOverlay', 'suppressAutoSize',
+    'suppressParentsInRowNodes', 'showToolPanel', 'suppressColumnMoveAnimation', 'suppressMovableColumns',
+    'suppressFieldDotNotation', 'enableRangeSelection', 'suppressEnterprise', 'rowGroupPanelShow',
+    'pivotPanelShow', 'suppressTouch', 'suppressAsyncEvents', 'allowContextMenuWithControlKey',
+    'suppressContextMenu', 'suppressMenuFilterPanel', 'suppressMenuMainPanel', 'suppressMenuColumnPanel',
+    'enableStatusBar', 'rememberGroupStateWhenNewData', 'enableCellChangeFlash', 'suppressDragLeaveHidesColumns',
+    'suppressMiddleClickScrolls', 'suppressPreventDefaultOnMouseWheel', 'suppressUseColIdForGroups',
+    'suppressCopyRowsToClipboard', 'pivotMode', 'suppressAggFuncInHeader', 'suppressAggFuncInHeader', 'suppressAggAtRootLevel',
+    'suppressFocusAfterRefresh', 'functionsPassive', 'functionsReadOnly', 'suppressRowHoverClass',
+    'animateRows', 'groupSelectsFiltered', 'groupRemoveSingleChildren', 'enableRtl', 'suppressClickEdit',
+    'enableGroupEdit', 'embedFullWidthRows', 'suppressTabbing', 'suppressPaginationPanel', 'floatingFilter',
+    'groupHideOpenParents', 'groupMultiAutoColumn', 'pagination', 'stopEditingWhenGridLosesFocus',
+    'paginationAutoPageSize', 'suppressScrollOnNewData', 'purgeClosedRowNodes', 'cacheQuickFilter'
+];
+ComponentUtil.FUNCTION_PROPERTIES = ['headerCellRenderer', 'localeTextFunc', 'groupRowInnerRenderer', 'groupRowInnerRendererFramework',
+    'dateComponent', 'dateComponentFramework', 'groupRowRenderer', 'groupRowRendererFramework', 'isScrollLag', 'isExternalFilterPresent',
+    'getRowHeight', 'doesExternalFilterPass', 'getRowClass', 'getRowStyle', 'getHeaderCellTemplate', 'traverseNode',
+    'getContextMenuItems', 'getMainMenuItems', 'processRowPostCreate', 'processCellForClipboard',
+    'getNodeChildDetails', 'groupRowAggNodes', 'getRowNodeId', 'isFullWidthCell', 'fullWidthCellRenderer',
+    'fullWidthCellRendererFramework', 'doesDataFlower', 'processSecondaryColDef', 'processSecondaryColGroupDef',
+    'getBusinessKeyForNode', 'sendToClipboard', 'navigateToNextCell', 'tabToNextCell',
+    'processCellFromClipboard', 'getDocument', 'postProcessPopup'];
+ComponentUtil.ALL_PROPERTIES = ComponentUtil.ARRAY_PROPERTIES
+    .concat(ComponentUtil.OBJECT_PROPERTIES)
+    .concat(ComponentUtil.STRING_PROPERTIES)
+    .concat(ComponentUtil.NUMBER_PROPERTIES)
+    .concat(ComponentUtil.FUNCTION_PROPERTIES)
+    .concat(ComponentUtil.BOOLEAN_PROPERTIES);
 exports.ComponentUtil = ComponentUtil;
 utils_1.Utils.iterateObject(events_1.Events, function (key, value) {
     ComponentUtil.EVENTS.push(value);

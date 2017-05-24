@@ -1,7 +1,6 @@
-// Type definitions for ag-grid v4.0.2
+// Type definitions for ag-grid v10.0.0
 // Project: http://www.ag-grid.com/
 // Definitions by: Niall Crosby <https://github.com/ceolter/>
-// Definitions: https://github.com/borisyankov/DefinitelyTyped
 import { Column } from "./entities/column";
 export declare class SortController {
     private static DEFAULT_SORTING_ORDER;
@@ -9,6 +8,8 @@ export declare class SortController {
     private columnController;
     private eventService;
     progressSort(column: Column, multiSort: boolean): void;
+    setSortForColumn(column: Column, sort: string, multiSort: boolean): void;
+    onSortChanged(): void;
     private dispatchSortChangedEvents();
     private clearSortBarThisColumn(columnToSkip);
     private getNextSortDirection(column);

@@ -1,215 +1,163 @@
-import {Utils as _} from '../utils';
-import {Filter} from "./filter";
+import {Utils as _} from "../utils";
+import {IFilterParams, IDoesFilterPassParams, SerializedFilter} from "../interfaces/iFilter";
+import {ComparableBaseFilter, BaseFilter} from "./baseFilter";
+import {QuerySelector} from "../widgets/componentAnnotations";
 
-var template =
-        '<div>'+
-            '<div>'+
-                '<select class="ag-filter-select" id="filterType">'+
-                    '<option value="1">[CONTAINS]</option>'+
-                    '<option value="2">[EQUALS]</option>'+
-                    '<option value="3">[STARTS WITH]</option>'+
-                    '<option value="4">[ENDS WITH]</option>'+
-                '</select>'+
-            '</div>'+
-            '<div>'+
-                '<input class="ag-filter-filter" id="filterText" type="text" placeholder="[FILTER...]"/>'+
-            '</div>'+
-            '<div class="ag-filter-apply-panel" id="applyPanel">'+
-                '<button type="button" id="applyButton">[APPLY FILTER]</button>' +
-            '</div>'+
-        '</div>';
+export interface SerializedTextFilter extends SerializedFilter {
+    filter:string
+    type:string
+}
 
-var CONTAINS = 1;
-var EQUALS = 2;
-var STARTS_WITH = 3;
-var ENDS_WITH = 4;
+export interface TextComparator {
+    (filter:string, gridValue:any, filterText:string):boolean;
+}
 
-export class TextFilter implements Filter {
+export interface ITextFilterParams extends IFilterParams{
+    textCustomComparator?:TextComparator
+}
 
-    private filterParams: any;
-    private filterChangedCallback: any;
-    private filterModifiedCallback: any;
-    private localeTextFunc: any;
-    private valueGetter: any;
-    private filterText: any;
-    private filterType: any;
-    private api: any;
+export class TextFilter extends ComparableBaseFilter <string, ITextFilterParams, SerializedTextFilter> {
+    @QuerySelector('#filterText')
+    private eFilterTextField: HTMLInputElement;
 
-    private eGui: any;
-    private eFilterTextField: any;
-    private eTypeSelect: any;
-    private applyActive: any;
-    private eApplyButton: any;
-
-    public init(params: any): void {
-        this.filterParams = params.filterParams;
-        this.applyActive = this.filterParams && this.filterParams.apply === true;
-        this.filterChangedCallback = params.filterChangedCallback;
-        this.filterModifiedCallback = params.filterModifiedCallback;
-        this.localeTextFunc = params.localeTextFunc;
-        this.valueGetter = params.valueGetter;
-        this.createGui();
-        this.filterText = null;
-        this.filterType = CONTAINS;
-        this.createApi();
-    }
-
-    public onNewRowsLoaded() {
-        var keepSelection = this.filterParams && this.filterParams.newRowsAction === 'keep';
-        if (!keepSelection) {
-            this.api.setType(CONTAINS);
-            this.api.setFilter(null);
+    private filterText: string;
+    private comparator:TextComparator;
+    static DEFAULT_COMPARATOR:TextComparator = (filter:string, value:any, filterText:string)=>{
+        let filterTextLoweCase = filterText.toLowerCase();
+        let valueLowerCase = value.toString().toLowerCase();
+        switch (filter) {
+        case TextFilter.CONTAINS:
+            return valueLowerCase.indexOf(filterTextLoweCase) >= 0;
+        case TextFilter.NOT_CONTAINS:
+            return valueLowerCase.indexOf(filterTextLoweCase) === -1;
+        case TextFilter.EQUALS:
+            return valueLowerCase === filterTextLoweCase;
+        case TextFilter.NOT_EQUAL:
+            return valueLowerCase != filterTextLoweCase;
+        case TextFilter.STARTS_WITH:
+            return valueLowerCase.indexOf(filterTextLoweCase) === 0;
+        case TextFilter.ENDS_WITH:
+            var index = valueLowerCase.lastIndexOf(filterTextLoweCase);
+            return index >= 0 && index === (valueLowerCase.length - filterTextLoweCase.length);
+        default:
+            // should never happen
+            console.warn('invalid filter type ' + filter);
+            return false;
         }
+    };
+
+
+    public customInit(): void {
+        this.comparator = this.filterParams.textCustomComparator ? this.filterParams.textCustomComparator : TextFilter.DEFAULT_COMPARATOR;
     }
+
+    modelFromFloatingFilter(from: string): SerializedTextFilter {
+        return {
+            type: this.filter,
+            filter: from,
+            filterType: 'text'
+        };
+    }
+
+    public getApplicableFilterTypes ():string[]{
+        return [BaseFilter.EQUALS, BaseFilter.NOT_EQUAL, BaseFilter.STARTS_WITH, BaseFilter.ENDS_WITH,
+            BaseFilter.CONTAINS, BaseFilter.NOT_CONTAINS];
+    }
+
+    public bodyTemplate(): string {
+        let translate = this.translate.bind(this);
+        return `<div class="ag-filter-body">
+            <input class="ag-filter-filter" id="filterText" type="text" placeholder="${translate('filterOoo', 'Filter...')}"/>
+        </div>`;
+    }
+
+    public initialiseFilterBodyUi() {
+        this.addDestroyableEventListener(this.eFilterTextField, 'input', this.onFilterTextFieldChanged.bind(this));
+        this.setType(this.defaultFilter);
+    }
+
+    public refreshFilterBodyUi() {}
 
     public afterGuiAttached() {
         this.eFilterTextField.focus();
     }
 
-    public doesFilterPass(node: any) {
+    public filterValues ():string {
+        return this.filterText;
+    }
+
+    public doesFilterPass(params: IDoesFilterPassParams) {
         if (!this.filterText) {
             return true;
         }
-        var value = this.valueGetter(node);
+        var value = this.filterParams.valueGetter(params.node);
         if (!value) {
-            return false;
-        }
-        var valueLowerCase = value.toString().toLowerCase();
-        switch (this.filterType) {
-            case CONTAINS:
-                return valueLowerCase.indexOf(this.filterText) >= 0;
-            case EQUALS:
-                return valueLowerCase === this.filterText;
-            case STARTS_WITH:
-                return valueLowerCase.indexOf(this.filterText) === 0;
-            case ENDS_WITH:
-                var index = valueLowerCase.lastIndexOf(this.filterText);
-                return index >= 0 && index === (valueLowerCase.length - this.filterText.length);
-            default:
-                // should never happen
-                console.warn('invalid filter type ' + this.filterType);
+            if (this.filter === BaseFilter.NOT_EQUAL) {
+                // if there is no value, but the filter type was 'not equals',
+                // then it should pass, as a missing value is not equal whatever
+                // the user is filtering on
+                return true;
+            } else {
+                // otherwise it's some type of comparison, to which empty value
+                // will always fail
                 return false;
+            }
         }
+        return this.comparator (this.filter, value, this.filterText);
     }
 
-    public getGui() {
-        return this.eGui;
-    }
-
-    public isFilterActive() {
-        return this.filterText !== null;
-    }
-
-    private createTemplate() {
-        return template
-            .replace('[FILTER...]', this.localeTextFunc('filterOoo', 'Filter...'))
-            .replace('[EQUALS]', this.localeTextFunc('equals', 'Equals'))
-            .replace('[CONTAINS]', this.localeTextFunc('contains', 'Contains'))
-            .replace('[STARTS WITH]', this.localeTextFunc('startsWith', 'Starts with'))
-            .replace('[ENDS WITH]', this.localeTextFunc('endsWith', 'Ends with'))
-            .replace('[APPLY FILTER]', this.localeTextFunc('applyFilter', 'Apply Filter'));
-    }
-
-    private createGui() {
-        this.eGui = _.loadTemplate(this.createTemplate());
-        this.eFilterTextField = this.eGui.querySelector("#filterText");
-        this.eTypeSelect = this.eGui.querySelector("#filterType");
-
-        _.addChangeListener(this.eFilterTextField, this.onFilterChanged.bind(this));
-        this.eTypeSelect.addEventListener("change", this.onTypeChanged.bind(this));
-        this.setupApply();
-    }
-
-    private setupApply() {
-        if (this.applyActive) {
-            this.eApplyButton = this.eGui.querySelector('#applyButton');
-            this.eApplyButton.addEventListener('click', () => {
-                this.filterChangedCallback();
-            });
-        } else {
-            _.removeElement(this.eGui, '#applyPanel');
-        }
-    }
-
-    private onTypeChanged() {
-        this.filterType = parseInt(this.eTypeSelect.value);
-        this.filterChanged();
-    }
-
-    private onFilterChanged() {
+    private onFilterTextFieldChanged() {
         var filterText = _.makeNull(this.eFilterTextField.value);
         if (filterText && filterText.trim() === '') {
             filterText = null;
         }
-        var newFilterText: string;
-        if (filterText!==null && filterText!==undefined) {
-            newFilterText = filterText.toLowerCase();
-        } else {
-            newFilterText = null;
-        }
-        if (this.filterText !== newFilterText) {
-            this.filterText = newFilterText;
-            this.filterChanged();
-        }
-    }
 
-    private filterChanged() {
-        this.filterModifiedCallback();
-        if (!this.applyActive) {
-            this.filterChangedCallback();
-        }
-    }
-
-    private createApi() {
-        var that = this;
-        this.api = {
-            EQUALS: EQUALS,
-            CONTAINS: CONTAINS,
-            STARTS_WITH: STARTS_WITH,
-            ENDS_WITH: ENDS_WITH,
-            setType: function (type: any) {
-                that.filterType = type;
-                that.eTypeSelect.value = type;
-            },
-            setFilter: function (filter: any) {
-                filter = _.makeNull(filter);
-
-                if (filter) {
-                    that.filterText = filter.toLowerCase();
-                    that.eFilterTextField.value = filter;
-                } else {
-                    that.filterText = null;
-                    that.eFilterTextField.value = null;
-                }
-            },
-            getType: function () {
-                return that.filterType;
-            },
-            getFilter: function () {
-                return that.filterText;
-            },
-            getModel: function () {
-                if (that.isFilterActive()) {
-                    return {
-                        type: that.filterType,
-                        filter: that.filterText
-                    };
-                } else {
-                    return null;
-                }
-            },
-            setModel: function (dataModel: any) {
-                if (dataModel) {
-                    this.setType(dataModel.type);
-                    this.setFilter(dataModel.filter);
-                } else {
-                    this.setFilter(null);
-                }
+        if (this.filterText !== filterText) {
+            let newLowerCase = filterText ? filterText.toLowerCase() : null;
+            let previousLowerCase = this.filterText ? this.filterText.toLowerCase() : null;
+            this.filterText = filterText;
+            if (previousLowerCase !== newLowerCase) {
+                this.onFilterChanged();
             }
-        };
+        }
     }
 
-    private getApi() {
-        return this.api;
+    public setFilter(filter: string): void {
+        filter = _.makeNull(filter);
+
+        if (filter) {
+            this.filterText = filter;
+            this.eFilterTextField.value = filter;
+        } else {
+            this.filterText = null;
+            this.eFilterTextField.value = null;
+        }
     }
+
+    public getFilter(): string {
+        return this.filterText;
+    }
+
+    public resetState(): void{
+        this.setFilter(null);
+        this.setFilterType(BaseFilter.CONTAINS);
+    }
+
+    public serialize(): SerializedTextFilter{
+        return {
+            type: this.filter,
+            filter: this.filterText,
+            filterType: 'text'
+        }
+    }
+
+    public parse(model:SerializedTextFilter): void{
+        this.setFilterType(model.type);
+        this.setFilter(model.filter);
+    }
+
+    public setType (filterType:string):void{
+        this.setFilterType(filterType);
+    }
+
 }

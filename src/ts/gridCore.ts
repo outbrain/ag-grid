@@ -1,53 +1,32 @@
 
 import {GridOptions} from "./entities/gridOptions";
 import {GridOptionsWrapper} from "./gridOptionsWrapper";
-import {InMemoryRowController} from "./rowControllers/inMemory/inMemoryRowController";
-import {PaginationController} from "./rowControllers/paginationController";
-import {VirtualPageRowController} from "./rowControllers/virtualPageRowController";
-import {FloatingRowModel} from "./rowControllers/floatingRowModel";
 import {ColumnController} from "./columnController/columnController";
 import {RowRenderer} from "./rendering/rowRenderer";
 import {FilterManager} from "./filter/filterManager";
-import {ValueService} from "./valueService";
-import {MasterSlaveService} from "./masterSlaveService";
 import {EventService} from "./eventService";
 import {GridPanel} from "./gridPanel/gridPanel";
-import {Logger} from "./logger";
-import {GridApi} from "./gridApi";
+import {Logger, LoggerFactory} from "./logger";
 import {Constants} from "./constants";
-import {HeaderTemplateLoader} from "./headerRendering/headerTemplateLoader";
-import {BalancedColumnTreeBuilder} from "./columnController/balancedColumnTreeBuilder";
-import {DisplayedGroupCreator} from "./columnController/displayedGroupCreator";
-import {SelectionRendererFactory} from "./selectionRendererFactory";
-import {ExpressionService} from "./expressionService";
-import {TemplateService} from "./templateService";
 import {PopupService} from "./widgets/popupService";
-import {LoggerFactory} from "./logger";
-import {ColumnUtils} from "./columnController/columnUtils";
-import {AutoWidthCalculator} from "./rendering/autoWidthCalculator";
 import {Events} from "./events";
+import {Utils as _} from "./utils";
 import {BorderLayout} from "./layout/borderLayout";
-import {ColumnChangeEvent} from "./columnChangeEvent";
-import {Column} from "./entities/column";
-import {RowNode} from "./entities/rowNode";
-import {ColDef} from "./entities/colDef";
-import {Context} from './context/context';
-import {Bean} from "./context/context";
-import {Qualifier} from "./context/context";
-import {Autowired} from "./context/context";
+import {PreDestroy, Bean, Qualifier, Autowired, PostConstruct, Optional, Context} from "./context/context";
 import {IRowModel} from "./interfaces/iRowModel";
-import {PostConstruct} from "./context/context";
 import {FocusedCellController} from "./focusedCellController";
-import {Optional} from "./context/context";
 import {Component} from "./widgets/component";
+import {ICompFactory} from "./interfaces/iCompFactory";
+import {IFrameworkFactory} from "./interfaces/iFrameworkFactory";
+import {PaginationComp} from "./rowModels/pagination/paginationComp";
 
 @Bean('gridCore')
 export class GridCore {
 
     @Autowired('gridOptions') private gridOptions: GridOptions;
     @Autowired('gridOptionsWrapper') private gridOptionsWrapper: GridOptionsWrapper;
-    @Autowired('paginationController') private paginationController: PaginationController;
     @Autowired('rowModel') private rowModel: IRowModel;
+    @Autowired('frameworkFactory') private frameworkFactory: IFrameworkFactory;
 
     @Autowired('columnController') private columnController: ColumnController;
     @Autowired('rowRenderer') private rowRenderer: RowRenderer;
@@ -60,10 +39,15 @@ export class GridCore {
     @Autowired('quickFilterOnScope') private quickFilterOnScope: string;
     @Autowired('popupService') private popupService: PopupService;
     @Autowired('focusedCellController') private focusedCellController: FocusedCellController;
+    @Autowired('context') private context: Context;
 
-    @Optional('rowGroupPanel') private rowGroupPanel: Component;
+    @Optional('rowGroupCompFactory') private rowGroupCompFactory: ICompFactory;
+    @Optional('pivotCompFactory') private pivotCompFactory: ICompFactory;
     @Optional('toolPanel') private toolPanel: Component;
     @Optional('statusBar') private statusBar: Component;
+
+    private rowGroupComp: Component;
+    private pivotComp: Component;
 
     private finished: boolean;
     private doingVirtualPaging: boolean;
@@ -71,8 +55,9 @@ export class GridCore {
     private eRootPanel: BorderLayout;
     private toolPanelShowing: boolean;
 
-    private windowResizeListener: EventListener;
     private logger: Logger;
+
+    private destroyFunctions: Function[] = [];
 
     constructor(@Qualifier('loggerFactory') loggerFactory: LoggerFactory) {
         this.logger = loggerFactory.create('GridCore');
@@ -81,24 +66,26 @@ export class GridCore {
     @PostConstruct
     public init(): void {
 
-        // and the last bean, done in it's own section, as it's optional
-        var toolPanelGui: HTMLElement;
-
         var eSouthPanel = this.createSouthPanel();
 
+        let eastPanel: HTMLElement;
+        let westPanel: HTMLElement;
         if (this.toolPanel && !this.gridOptionsWrapper.isForPrint()) {
-            toolPanelGui = this.toolPanel.getGui();
+            // if we are doing RTL, then the tool panel appears on the left
+            if (this.gridOptionsWrapper.isEnableRtl()) {
+                westPanel = this.toolPanel.getGui();
+            } else {
+                eastPanel = this.toolPanel.getGui();
+            }
         }
 
-        var rowGroupGui: HTMLElement;
-        if (this.rowGroupPanel) {
-            rowGroupGui = this.rowGroupPanel.getGui();
-        }
+        var createTopPanelGui = this.createNorthPanel();
 
         this.eRootPanel = new BorderLayout({
             center: this.gridPanel.getLayout(),
-            east: toolPanelGui,
-            north: rowGroupGui,
+            east: eastPanel,
+            west: westPanel,
+            north: createTopPanelGui,
             south: eSouthPanel,
             dontFill: this.gridOptionsWrapper.isForPrint(),
             name: 'eRootPanel'
@@ -118,14 +105,16 @@ export class GridCore {
             this.addWindowResizeListener();
         }
 
+        // important to set rtl before doLayout, as setting the RTL class impacts the scroll position,
+        // which doLayout indirectly depends on
+        this.addRtlSupport();
+
         this.doLayout();
 
         this.finished = false;
         this.periodicallyDoLayout();
 
-        this.popupService.setPopupParent(this.eRootPanel.getGui());
-
-        this.eventService.addEventListener(Events.EVENT_COLUMN_ROW_GROUP_CHANGE, this.onRowGroupChanged.bind(this));
+        this.eventService.addEventListener(Events.EVENT_COLUMN_ROW_GROUP_CHANGED, this.onRowGroupChanged.bind(this));
         this.eventService.addEventListener(Events.EVENT_COLUMN_EVERYTHING_CHANGED, this.onRowGroupChanged.bind(this));
 
         this.onRowGroupChanged();
@@ -133,6 +122,51 @@ export class GridCore {
         this.logger.log('ready');
     }
 
+    private addRtlSupport(): void {
+        if (this.gridOptionsWrapper.isEnableRtl()) {
+            _.addCssClass(this.eRootPanel.getGui(), 'ag-rtl');
+        } else {
+            _.addCssClass(this.eRootPanel.getGui(), 'ag-ltr');
+        }
+    }
+
+    private createNorthPanel(): HTMLElement {
+
+        if (!this.gridOptionsWrapper.isEnterprise()) { return null; }
+
+        var topPanelGui = document.createElement('div');
+
+        var dropPanelVisibleListener = this.onDropPanelVisible.bind(this);
+
+        this.rowGroupComp = this.rowGroupCompFactory.create();
+        this.pivotComp = this.pivotCompFactory.create();
+
+        topPanelGui.appendChild(this.rowGroupComp.getGui());
+        topPanelGui.appendChild(this.pivotComp.getGui());
+
+        this.rowGroupComp.addEventListener(Component.EVENT_VISIBLE_CHANGED, dropPanelVisibleListener);
+        this.pivotComp.addEventListener(Component.EVENT_VISIBLE_CHANGED, dropPanelVisibleListener);
+
+        this.destroyFunctions.push( ()=> {
+            this.rowGroupComp.removeEventListener(Component.EVENT_VISIBLE_CHANGED, dropPanelVisibleListener);
+            this.pivotComp.removeEventListener(Component.EVENT_VISIBLE_CHANGED, dropPanelVisibleListener);
+        } );
+
+        this.onDropPanelVisible();
+
+        return topPanelGui;
+    }
+
+    private onDropPanelVisible(): void {
+        var bothVisible = this.rowGroupComp.isVisible() && this.pivotComp.isVisible();
+        this.rowGroupComp.addOrRemoveCssClass('ag-width-half', bothVisible);
+        this.pivotComp.addOrRemoveCssClass('ag-width-half', bothVisible);
+    }
+
+    public getRootGui(): HTMLElement {
+        return this.eRootPanel.getGui();
+    }
+    
     private createSouthPanel(): HTMLElement {
 
         if (!this.statusBar && this.gridOptionsWrapper.isEnableStatusBar()) {
@@ -140,7 +174,11 @@ export class GridCore {
         }
 
         var statusBarEnabled = this.statusBar && this.gridOptionsWrapper.isEnableStatusBar();
-        var paginationPanelEnabled = this.gridOptionsWrapper.isRowModelPagination() && !this.gridOptionsWrapper.isForPrint();
+        let isPaging = this.gridOptionsWrapper.isPagination() ||
+            this.gridOptionsWrapper.isRowModelServerPagination();
+        var paginationPanelEnabled = isPaging
+            && !this.gridOptionsWrapper.isForPrint()
+            && !this.gridOptionsWrapper.isSuppressPaginationPanel();
 
         if (!statusBarEnabled && !paginationPanelEnabled) {
             return null;
@@ -151,56 +189,57 @@ export class GridCore {
             eSouthPanel.appendChild(this.statusBar.getGui());
         }
 
+
         if (paginationPanelEnabled) {
-            eSouthPanel.appendChild(this.paginationController.getGui());
+            let paginationComp = new PaginationComp();
+            this.context.wireBean(paginationComp);
+            eSouthPanel.appendChild(paginationComp.getGui());
+            this.destroyFunctions.push(paginationComp.destroy.bind(paginationComp));
         }
 
         return eSouthPanel;
     }
 
     private onRowGroupChanged(): void {
-        if (!this.rowGroupPanel) { return; }
+        if (!this.rowGroupComp) { return; }
 
         var rowGroupPanelShow = this.gridOptionsWrapper.getRowGroupPanelShow();
 
         if (rowGroupPanelShow===Constants.ALWAYS) {
-            this.eRootPanel.setNorthVisible(true);
+            this.rowGroupComp.setVisible(true);
         } else if (rowGroupPanelShow===Constants.ONLY_WHEN_GROUPING) {
             var grouping = !this.columnController.isRowGroupEmpty();
-            this.eRootPanel.setNorthVisible(grouping);
+            this.rowGroupComp.setVisible(grouping);
         } else {
-            this.eRootPanel.setNorthVisible(false);
+            this.rowGroupComp.setVisible(false);
         }
-    }
 
-    public agApplicationBoot(): void {
-        var readyEvent = {
-            api: this.gridOptions.api,
-            columnApi: this.gridOptions.columnApi
-        };
-        this.eventService.dispatchEvent(Events.EVENT_GRID_READY, readyEvent);
+        this.eRootPanel.doLayout();
     }
-
+    
     private addWindowResizeListener(): void {
-        var that = this;
-        // putting this into a function, so when we remove the function,
-        // we are sure we are removing the exact same function (i'm not
-        // sure what 'bind' does to the function reference, if it's safe
-        // the result from 'bind').
-        this.windowResizeListener = function resizeListener() {
-            that.doLayout();
-        };
-        window.addEventListener('resize', this.windowResizeListener);
+        var eventListener = this.doLayout.bind(this);
+        window.addEventListener('resize', eventListener);
+        this.destroyFunctions.push( ()=> window.removeEventListener('resize', eventListener) );
     }
 
     private periodicallyDoLayout() {
         if (!this.finished) {
-            var that = this;
-            setTimeout(function () {
-                that.doLayout();
-                that.gridPanel.periodicallyCheck();
-                that.periodicallyDoLayout();
-            }, 500);
+            var intervalMillis = this.gridOptionsWrapper.getLayoutInterval();
+            // if interval is negative, this stops the layout from happening
+            if (intervalMillis>0){
+                this.frameworkFactory.setTimeout( () => {
+                    this.doLayout();
+                    this.gridPanel.periodicallyCheck();
+                    this.periodicallyDoLayout();
+                }, intervalMillis);
+            } else {
+                // if user provided negative number, we still do the check every 5 seconds,
+                // in case the user turns the number positive again
+                this.frameworkFactory.setTimeout( () => {
+                    this.periodicallyDoLayout();
+                }, 5000);
+            }
         }
     }
 
@@ -212,22 +251,24 @@ export class GridCore {
         }
 
         this.toolPanelShowing = show;
-        this.eRootPanel.setEastVisible(show);
+        if (this.toolPanel) {
+            this.toolPanel.setVisible(show);
+            this.eRootPanel.doLayout();
+        }
     }
 
     public isToolPanelShowing() {
         return this.toolPanelShowing;
     }
 
-    public agDestroy() {
-        if (this.windowResizeListener) {
-            window.removeEventListener('resize', this.windowResizeListener);
-            this.logger.log('Removing windowResizeListener');
-        }
+    @PreDestroy
+    private destroy() {
         this.finished = true;
 
         this.eGridDiv.removeChild(this.eRootPanel.getGui());
         this.logger.log('Grid DOM removed');
+
+        this.destroyFunctions.forEach(func => func());
     }
 
     public ensureNodeVisible(comparator: any) {
@@ -235,7 +276,7 @@ export class GridCore {
             throw 'Cannot use ensureNodeVisible when doing virtual paging, as we cannot check rows that are not in memory';
         }
         // look for the node index we want to display
-        var rowCount = this.rowModel.getRowCount();
+        var rowCount = this.rowModel.getPageLastRow() + 1;
         var comparatorIsAFunction = typeof comparator === 'function';
         var indexToSelect = -1;
         // go through all the nodes, find the one we want to show
@@ -263,9 +304,17 @@ export class GridCore {
         // need to do layout first, as drawVirtualRows and setPinnedColHeight
         // need to know the result of the resizing of the panels.
         var sizeChanged = this.eRootPanel.doLayout();
+        // not sure why, this is a hack, but if size changed, it may need to be called
+        // again - as the size change can change whether scrolls are visible or not (i think).
+        // to see why, take this second 'doLayout' call out, and see example in docs for
+        // width & height, the grid will flicker as it doesn't get laid out correctly with
+        // one call to doLayout()
+        if (sizeChanged) {
+            this.eRootPanel.doLayout();
+        }
         // both of the two below should be done in gridPanel, the gridPanel should register 'resize' to the panel
         if (sizeChanged) {
-            this.rowRenderer.drawVirtualRows();
+            this.rowRenderer.drawVirtualRowsWithLock();
             var event = {
                 clientWidth: this.eRootPanel.getGui().clientWidth,
                 clientHeight: this.eRootPanel.getGui().clientHeight

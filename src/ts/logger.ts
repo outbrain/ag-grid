@@ -7,27 +7,35 @@ export class LoggerFactory {
 
     private logging: boolean;
 
-    public agWire(@Qualifier('gridOptionsWrapper') gridOptionsWrapper: GridOptionsWrapper): void {
+    private setBeans(@Qualifier('gridOptionsWrapper') gridOptionsWrapper: GridOptionsWrapper): void {
         this.logging = gridOptionsWrapper.isDebug();
     }
 
     public create(name: string) {
-        return new Logger(name, this.logging);
+        return new Logger(name, this.isLogging.bind(this));
+    }
+
+    public isLogging(): boolean {
+        return this.logging;
     }
 }
 
 export class Logger {
 
-    private logging: boolean;
+    private isLoggingFunc: ()=>boolean;
     private name: string;
 
-    constructor(name: string, logging: boolean) {
+    constructor(name: string, isLoggingFunc: ()=>boolean) {
         this.name = name;
-        this.logging = logging;
+        this.isLoggingFunc = isLoggingFunc;
+    }
+
+    public isLogging(): boolean {
+        return this.isLoggingFunc();
     }
 
     public log(message: string) {
-        if (this.logging) {
+        if (this.isLoggingFunc()) {
             console.log('ag-Grid.' + this.name + ': ' + message);
         }
     }

@@ -16,6 +16,8 @@ var pkg = require('./package.json');
 var tsd = require('gulp-tsd');
 var webpack = require('webpack');
 var webpackStream = require('webpack-stream');
+var replace = require('gulp-replace');
+var gulpIf = require('gulp-if');
 
 var jasmine = require('gulp-jasmine');
 
@@ -32,31 +34,32 @@ var headerTemplate = ['/**',
 var dtsHeaderTemplate =
     '// Type definitions for <%= pkg.name %> v<%= pkg.version %>\n' +
     '// Project: <%= pkg.homepage %>\n' +
-    '// Definitions by: Niall Crosby <https://github.com/ceolter/>\n' +
-    '// Definitions: https://github.com/borisyankov/DefinitelyTyped\n';
+    '// Definitions by: Niall Crosby <https://github.com/ceolter/>\n';
 
-gulp.task('default', ['watch']);
+gulp.task('default', ['webpack-all']);
 gulp.task('release', ['webpack-all']);
 
 gulp.task('webpack-all', ['webpack','webpack-minify','webpack-noStyle','webpack-minify-noStyle'], tscTask);
-
-gulp.task('tsc', ['cleanDist'], tscTask);
-gulp.task('tsc-dev', tscTask);
 
 gulp.task('webpack-minify-noStyle', ['tsc','stylus'], webpackTask.bind(null, true, false));
 gulp.task('webpack-noStyle', ['tsc','stylus'], webpackTask.bind(null, false, false));
 gulp.task('webpack-minify', ['tsc','stylus'], webpackTask.bind(null, true, true));
 gulp.task('webpack', ['tsc','stylus'], webpackTask.bind(null, false, true));
 
-gulp.task('webpack-dev', ['tsc-dev','stylus-dev'], webpackTask.bind(null, false, true));
+gulp.task('stylus-watch', ['stylus-no-clean'], stylusWatch);
+gulp.task('stylus-no-clean', stylusTask);
 
-gulp.task('watch', ['webpack-dev'], watchTask);
-
+gulp.task('tsc', ['tsc-src'], tscExportsTask);
+gulp.task('tsc-src', ['cleanDist'], tscTask);
+gulp.task('tsc-exports', ['cleanExports'], tscExportsTask);
 gulp.task('stylus', ['cleanDist'], stylusTask);
-gulp.task('stylus-dev', stylusTask);
 
 gulp.task('cleanDist', cleanDist);
-gulp.task('cleanDocs', cleanDocs);
+gulp.task('cleanExports', cleanExports);
+
+function stylusWatch() {
+    gulp.watch('./src/styles/!**/!*', ['stylus-no-clean']);
+}
 
 function cleanDist() {
     return gulp
@@ -64,48 +67,45 @@ function cleanDist() {
         .pipe(clean());
 }
 
-function cleanDocs() {
+function cleanExports() {
     return gulp
-        .src('docs/dist', {read: false})
+        .src(['./main.d.ts','main.js'], {read: false})
         .pipe(clean());
 }
 
-//function tsdTask(callback) {
-//    tsd({
-//        command: 'reinstall',
-//        config: './tsd.json'
-//    }, callback);
-//}
-
-//function tsTestTask() {
-//    return gulp.src('./spec/**/*.js')
-//        .pipe(jasmine({
-//            verbose: false
-//        }));
-//}
-
 function tscTask() {
+    var project = gulpTypescript.createProject('./tsconfig.json', {typescript: typescript});
+
     var tsResult = gulp
         .src('src/ts/**/*.ts')
-        //.pipe(sourcemaps.init())
-        .pipe(gulpTypescript({
-            typescript: typescript,
-            module: 'commonjs',
-            experimentalDecorators: true,
-            emitDecoratorMetadata: true,
-            declarationFiles: true,
-            target: 'es5',
-            noImplicitAny: true
-        }));
+        .pipe(gulpTypescript(project));
 
     return merge([
         tsResult.dts
             .pipe(header(dtsHeaderTemplate, { pkg : pkg }))
             .pipe(gulp.dest('dist/lib')),
         tsResult.js
-            //.pipe(sourcemaps.write())
             .pipe(header(headerTemplate, { pkg : pkg }))
             .pipe(gulp.dest('dist/lib'))
+    ])
+}
+
+function tscExportsTask() {
+    var project = gulpTypescript.createProject('./tsconfig-exports.json', {typescript: typescript});
+
+    var tsResult = gulp
+        .src('./exports.ts')
+        .pipe(gulpTypescript(project));
+
+    return merge([
+        tsResult.dts
+            .pipe(header(dtsHeaderTemplate, { pkg : pkg }))
+            .pipe(rename("main.d.ts"))
+            .pipe(gulp.dest('./')),
+        tsResult.js
+            .pipe(header(headerTemplate, { pkg : pkg }))
+            .pipe(rename("main.js"))
+            .pipe(gulp.dest('./'))
     ])
 }
 
@@ -146,21 +146,12 @@ function webpackTask(minify, styles) {
 }
 
 function stylusTask() {
-
     // Uncompressed
-    gulp.src('./src/styles/*.styl')
-        .pipe(foreach(function(stream, file) {
-            return stream
-                .pipe(stylus({
-                    use: nib(),
-                    compress: false
-                }))
-                .pipe(gulp.dest('./dist/styles/'));
-        }));
-
+    gulp.src(['src/styles/*.styl', '!src/styles/theme-common.styl'])
+        .pipe(stylus({
+            use: nib(),
+            compress: false
+        }))
+        .pipe(gulp.dest('dist/styles'));
 }
 
-function watchTask() {
-    gulp.watch('./src/ts/**/*', ['webpack-dev']);
-    gulp.watch('./src/styles/**/*', ['webpack-dev']);
-}

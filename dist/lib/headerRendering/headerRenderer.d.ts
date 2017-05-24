@@ -1,22 +1,27 @@
-// Type definitions for ag-grid v4.0.2
+// Type definitions for ag-grid v10.0.0
 // Project: http://www.ag-grid.com/
 // Definitions by: Niall Crosby <https://github.com/ceolter/>
-// Definitions: https://github.com/borisyankov/DefinitelyTyped
-import { Column } from "../entities/column";
+import { Component } from "../widgets/component";
 export declare class HeaderRenderer {
     private gridOptionsWrapper;
     private columnController;
     private gridPanel;
     private context;
     private eventService;
+    private scrollVisibleService;
     private pinnedLeftContainer;
     private pinnedRightContainer;
     private centerContainer;
+    private childContainers;
     private eHeaderViewport;
     private eRoot;
     private eHeaderOverlay;
     private init();
+    private onScrollVisibilityChanged();
+    forEachHeaderElement(callback: (renderedHeaderElement: Component) => void): void;
+    private destroy();
+    private onGridColumnsChanged();
     refreshHeader(): void;
+    private setHeight();
     setPinnedColContainerWidth(): void;
-    onIndividualColumnResized(column: Column): void;
 }

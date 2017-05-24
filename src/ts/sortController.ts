@@ -17,13 +17,22 @@ export class SortController {
     @Autowired('eventService') private eventService: EventService;
 
     public progressSort(column: Column, multiSort: boolean): void {
+        let nextDirection = this.getNextSortDirection(column);
+        this.setSortForColumn(column, nextDirection, multiSort);
+    }
+
+    public setSortForColumn(column: Column, sort: string, multiSort: boolean): void {
+
+        // auto correct - if sort not legal value, then set it to 'no sort' (which is null)
+        if (sort!==Column.SORT_ASC && sort!==Column.SORT_DESC) { sort = null; }
 
         // update sort on current col
-        column.setSort(this.getNextSortDirection(column));
+        column.setSort(sort);
 
         // sortedAt used for knowing order of cols when multi-col sort
         if (column.getSort()) {
-            column.setSortedAt(new Date().valueOf());
+            var sortedAt = Number(new Date().valueOf());
+            column.setSortedAt(sortedAt);
         } else {
             column.setSortedAt(null);
         }
@@ -38,14 +47,18 @@ export class SortController {
         this.dispatchSortChangedEvents();
     }
 
+    // gets called by API, so if data changes, use can call this, which will end up
+    // working out the sort order again of the rows.
+    public onSortChanged(): void {
+        this.dispatchSortChangedEvents();
+    }
+
     private dispatchSortChangedEvents(): void {
-        this.eventService.dispatchEvent(Events.EVENT_BEFORE_SORT_CHANGED);
         this.eventService.dispatchEvent(Events.EVENT_SORT_CHANGED);
-        this.eventService.dispatchEvent(Events.EVENT_AFTER_SORT_CHANGED);
     }
 
     private clearSortBarThisColumn(columnToSkip: Column): void {
-        this.columnController.getAllColumnsIncludingAuto().forEach( (columnToClear: Column)=> {
+        this.columnController.getPrimaryAndSecondaryAndAutoColumns().forEach( (columnToClear: Column)=> {
             // Do not clear if either holding shift, or if column in question was clicked
             if (!(columnToClear === columnToSkip)) {
                 columnToClear.setSort(null);
@@ -108,7 +121,7 @@ export class SortController {
         // first up, clear any previous sort
         var sortModelProvided = sortModel && sortModel.length > 0;
 
-        var allColumnsIncludingAuto = this.columnController.getAllColumnsIncludingAuto();
+        var allColumnsIncludingAuto = this.columnController.getPrimaryAndSecondaryAndAutoColumns();
         allColumnsIncludingAuto.forEach( (column: Column)=> {
             var sortForCol: any = null;
             var sortedAt = -1;
@@ -138,7 +151,7 @@ export class SortController {
 
     public getColumnsWithSortingOrdered(): Column[] {
         // pull out all the columns that have sorting set
-        var allColumnsIncludingAuto = this.columnController.getAllColumnsIncludingAuto();
+        var allColumnsIncludingAuto = this.columnController.getPrimaryAndSecondaryAndAutoColumns();
         var columnsWithSorting = <Column[]> _.filter(allColumnsIncludingAuto, (column:Column) => { return !!column.getSort();} );
 
         // put the columns in order of which one got sorted first

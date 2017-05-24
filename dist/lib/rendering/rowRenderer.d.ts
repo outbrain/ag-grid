@@ -1,19 +1,19 @@
-// Type definitions for ag-grid v4.0.2
+// Type definitions for ag-grid v10.0.0
 // Project: http://www.ag-grid.com/
 // Definitions by: Niall Crosby <https://github.com/ceolter/>
-// Definitions: https://github.com/borisyankov/DefinitelyTyped
 import { Column } from "../entities/column";
 import { RowNode } from "../entities/rowNode";
+import { RenderedCell } from "./renderedCell";
 import { LoggerFactory } from "../logger";
-import { ColumnChangeEvent } from "../columnChangeEvent";
 import { GridCell } from "../entities/gridCell";
-export declare class RowRenderer {
+import { ColDef } from "../entities/colDef";
+import { BeanStub } from "../context/beanStub";
+export declare class RowRenderer extends BeanStub {
+    private paginationProxy;
     private columnController;
     private gridOptionsWrapper;
     private gridCore;
-    private selectionRendererFactory;
     private gridPanel;
-    private $compile;
     private $scope;
     private expressionService;
     private templateService;
@@ -22,58 +22,64 @@ export declare class RowRenderer {
     private floatingRowModel;
     private context;
     private loggerFactory;
-    private rowModel;
     private focusedCellController;
     private rangeController;
     private cellNavigationService;
-    private cellRendererMap;
-    private firstVirtualRenderedRow;
-    private lastVirtualRenderedRow;
+    private firstRenderedRow;
+    private lastRenderedRow;
     private renderedRows;
     private renderedTopFloatingRows;
     private renderedBottomFloatingRows;
-    private eAllBodyContainers;
-    private eAllPinnedLeftContainers;
-    private eAllPinnedRightContainers;
-    private eBodyContainer;
-    private eBodyViewport;
-    private ePinnedLeftColsContainer;
-    private ePinnedRightColsContainer;
-    private eFloatingTopContainer;
-    private eFloatingTopPinnedLeftContainer;
-    private eFloatingTopPinnedRightContainer;
-    private eFloatingBottomContainer;
-    private eFloatingBottomPinnedLeftContainer;
-    private eFloatingBottomPinnedRightContainer;
+    private rowContainers;
+    private refreshInProgress;
     private logger;
     agWire(loggerFactory: LoggerFactory): void;
     init(): void;
-    onColumnEvent(event: ColumnChangeEvent): void;
-    getContainersFromGridPanel(): void;
-    setRowModel(rowModel: any): void;
+    private onPageLoaded(refreshEvent?);
     getAllCellsForColumn(column: Column): HTMLElement[];
-    setMainRowWidths(): void;
     refreshAllFloatingRows(): void;
-    private refreshFloatingRows(renderedRows, rowNodes, pinnedLeftContainer, pinnedRightContainer, bodyContainer);
-    refreshView(refreshEvent?: any): void;
-    softRefreshView(): void;
-    addRenderedRowListener(eventName: string, rowIndex: number, callback: Function): void;
+    private refreshFloatingRows(renderedRows, rowNodes, pinnedLeftContainerComp, pinnedRightContainerComp, bodyContainerComp, fullWidthContainerComp);
+    private onFloatingRowDataChanged();
+    private onModelUpdated(refreshEvent);
+    private getRenderedIndexesForRowNodes(rowNodes);
     refreshRows(rowNodes: RowNode[]): void;
-    refreshCells(rowNodes: RowNode[], colIds: string[]): void;
-    rowDataChanged(rows: any): void;
-    agDestroy(): void;
-    private refreshAllVirtualRows(fromIndex?);
+    refreshView(params?: RefreshViewParams): void;
+    private getLockOnRefresh();
+    private releaseLockOnRefresh();
+    private restoreFocusedCell(gridCell);
+    softRefreshView(): void;
+    stopEditing(cancel?: boolean): void;
+    forEachRenderedCell(callback: (renderedCell: RenderedCell) => void): void;
+    private forEachRenderedRow(callback);
+    addRenderedRowListener(eventName: string, rowIndex: number, callback: Function): void;
+    refreshCells(rowNodes: RowNode[], cols: (string | ColDef | Column)[], animate?: boolean): void;
+    destroy(): void;
+    private refreshAllVirtualRows(keepRenderedRows, animate);
     refreshGroupRows(): void;
-    private removeVirtualRow(rowsToRemove, fromIndex?);
-    private unbindVirtualRow(indexToRemove);
-    drawVirtualRows(): void;
-    workOutFirstAndLastRowsToRender(): void;
+    private removeVirtualRows(rowsToRemove);
+    drawVirtualRowsWithLock(): void;
+    private drawVirtualRows(oldRowsByNodeId?, animate?);
+    private workOutFirstAndLastRowsToRender();
     getFirstVirtualRenderedRow(): number;
     getLastVirtualRenderedRow(): number;
-    private ensureRowsRendered();
-    onMouseEvent(eventName: string, mouseEvent: MouseEvent, eventSource: HTMLElement, cell: GridCell): void;
-    private insertRow(node, rowIndex);
+    private ensureRowsRendered(oldRenderedRowsByNodeId?, animate?);
+    private getOrCreateRenderedRow(rowNode, oldRowsByNodeId, animate);
     getRenderedNodes(): any[];
-    navigateToNextCell(key: any, rowIndex: number, column: Column, floating: string): void;
-    startEditingNextCell(rowIndex: any, column: any, floating: string, shiftKey: any): void;
+    navigateToNextCell(event: KeyboardEvent, key: number, rowIndex: number, column: Column, floating: string): void;
+    startEditingCell(gridCell: GridCell, keyPress: number, charPress: string): void;
+    private getComponentForCell(gridCell);
+    onTabKeyDown(previousRenderedCell: RenderedCell, keyboardEvent: KeyboardEvent): void;
+    tabToNextCell(backwards: boolean): boolean;
+    private moveToCellAfter(previousRenderedCell, backwards);
+    private moveEditToNextCell(previousRenderedCell, nextRenderedCell);
+    private moveEditToNextRow(previousRenderedCell, nextRenderedCell);
+    private findNextCellToFocusOn(gridCell, backwards, startEditing);
+}
+export interface RefreshViewParams {
+    keepRenderedRows?: boolean;
+    animate?: boolean;
+    suppressKeepFocus?: boolean;
+    onlyBody?: boolean;
+    newData?: boolean;
+    newPage?: boolean;
 }
